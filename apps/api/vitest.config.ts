@@ -8,5 +8,8 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.spec.ts"],
     exclude: ["src/**/*.concurrency.spec.ts"],
+    // No unit specs exist yet (modules are scaffold-only). An empty suite must not fail
+    // CI — the concurrency gate is the separate, intentionally-red check until M3 lands.
+    passWithNoTests: true,
   },
 });
