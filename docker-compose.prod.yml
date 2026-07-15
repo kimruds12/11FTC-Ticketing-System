@@ -1,0 +1,53 @@
+# Production stack — builds the slim multi-stage images and runs them.
+#
+# Postgres + Auth are managed Supabase; Redis is managed (set REDIS_URL). Nothing stateful
+# runs here. Intended for a single-host deploy or as a template for a registry/orchestrator
+# (push the built images, reuse the service definitions).
+#
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# The api and worker share ONE image (built once) and differ only by command — matching
+# "same codebase, separate process" from System Design §2.
+
+services:
+  api:
+    image: 11ftc/api:latest
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  worker:
+    image: 11ftc/api:latest # reuse the api image; only the command differs
+    command: ["node", "dist/main.worker.js"]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  web:
+    image: 11ftc/web:latest
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined at build time — supply them here or via CI.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped

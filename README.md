@@ -1,88 +1,64 @@
 # 11FTC Ticketing Management System
 
-A web-based IT ticket encoding, monitoring, reporting, and analytics platform built for the 11FTC IT department. Integrates with the department's existing Google Sheets workflow via one-way synchronization.
+Internal IT ticketing tool for the 11FTC department. Modular monolith (NestJS) + a
+background sync worker + a Next.js web app, in a pnpm/Turborepo monorepo.
 
-## Architecture
+> **Read `CLAUDE.md` first.** It is the canonical set of invariants. The authoritative
+> specs live in `docs/`; when this README and a doc disagree, the doc wins.
 
-**Modular monolith** with a background sync worker.
-
-| Container | Technology | Purpose |
-|---|---|---|
-| Web Application | Next.js 15 (App Router) | Ticket forms, employee management, dashboard analytics |
-| Application API | NestJS 11 | REST API, business logic, audit logging |
-| Sync Worker | NestJS (standalone) | Drains outbox → Google Sheets |
-| Database | PostgreSQL | System of record |
-| Cache / Queue | Redis | Job queue (BullMQ) + dashboard cache |
-
-## Monorepo Structure
+## Layout
 
 ```
-├── apps/
-│   ├── web/              # Next.js frontend
-│   └── api/              # NestJS backend API
-├── services/
-│   └── sync-worker/      # Google Sheets sync worker
-├── packages/
-│   ├── shared-types/     # Shared TypeScript types & enums
-│   ├── database/         # Prisma schema & client
-│   ├── eslint-config/    # Shared ESLint configuration
-│   └── tsconfig/         # Shared TypeScript presets
-├── documents/            # SRS, System Design, diagrams
-└── .agents/              # AI agent skills & context
+apps/
+  web/     Next.js web app (no business logic)
+  api/     NestJS API (the transaction boundary) + main.worker.ts (BullMQ sync worker)
+packages/
+  shared/  DTOs, Zod schemas, enums, normalizeName — shared by api + web
+  db/      Drizzle schema + migrations (imported by api and worker)
+docs/
+  *.md            SRS, System Design, module specs, traceability
+  adr/            architecture decision records (0001..)
+  api/            frontend↔backend contract (OpenAPI approach)
+  deployment.md   Docker: local dev + production
+  agent-tooling.md multi-agent skills setup (5 agents)
+  diagrams/       *.d2 sources, workspace.dsl, rendered/*.svg
+  implementation/ per-module build guides (M1..M9) + frontend/ (per-feature)
+.claude/rules/    domain / numbering / sync-worker invariants (loaded by Claude Code)
+scripts/          sync-agents (keeps AGENTS.md/copilot in sync), check-no-delete
 ```
 
-## Prerequisites
-
-- **Node.js** >= 20.0.0
-- **pnpm** >= 9.0.0
-- **PostgreSQL** >= 15
-- **Redis** >= 7
-
-## Getting Started
+## Getting started
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Set up environment variables
-cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
-
-# Run database migrations
-pnpm db:migrate
-
-# Start all services in development
-pnpm dev
-
-# Or start individually
-pnpm dev:web      # Next.js on http://localhost:3000
-pnpm dev:api      # NestJS on http://localhost:3001
-pnpm dev:worker   # Sync worker
+cp .env.example .env      # fill in real values — never commit .env
+pnpm typecheck && pnpm lint && pnpm test
 ```
 
-## Scripts
+`pnpm test:concurrency` currently **fails on purpose** — it is the specification for the
+ticket-numbering module (M3) and stays red until M3 is implemented.
 
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start all services in parallel |
-| `pnpm dev:web` | Start Next.js frontend only |
-| `pnpm dev:api` | Start NestJS API only |
-| `pnpm dev:worker` | Start sync worker only |
-| `pnpm build` | Build all packages |
-| `pnpm lint` | Lint all packages |
-| `pnpm format` | Format all files with Prettier |
-| `pnpm test` | Run all tests |
-| `pnpm db:migrate` | Run Prisma migrations (dev) |
-| `pnpm db:generate` | Regenerate Prisma client |
-| `pnpm db:studio` | Open Prisma Studio |
-| `pnpm typecheck` | Type-check all packages |
+Or with Docker (data/auth via remote Supabase, local Redis):
 
-## Documentation
+```bash
+cp .env.example .env      # fill in remote Supabase values
+docker compose up         # api :3001, web :3000, redis :6379 — see docs/deployment.md
+```
 
-- [Software Requirements Specification](documents/11FTC_SRS_Rev3.md) — Authoritative requirements (FR-1 through FR-34)
-- [System Design & Architecture](documents/11FTC_System_Design.md) — Architectural decisions and design rationale
-- [Traceability Matrix](documents/12-traceability-matrix.md) — FR → use case → diagram mapping
+## The invariants that matter (full list in CLAUDE.md)
 
-## License
+1. One transaction boundary: `TicketService`. Nothing beneath it opens its own tx.
+2. Ticket numbers via atomic upsert, never `SELECT MAX+1`; `uq_ticket_seq` in the DB.
+3. Nothing is deleted — `is_active` / status. CI greps for forbidden DELETEs.
+4. Closed is terminal; the state machine is enforced server-side.
+5. Sheet sync is one-way, out-of-band, and locates rows by `row_key`, never position.
 
-Private — 11FTC IT Department
+## Build order
+
+M1 → M2 → M3 → … → M9, per `docs/14-module-specifications.md`. Write the M3 concurrency
+test before M3. See `docs/implementation/` for how to build each module.
+
+## Open items (block go-live — decisions, not code)
+
+OPEN-1 numbering scope · OPEN-2 IT-Staff dashboard access · OPEN-3 sheet hand-editing ·
+OPEN-4 the real lookup lists.

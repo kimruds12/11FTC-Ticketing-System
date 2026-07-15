@@ -1,0 +1,33 @@
+# Keep build contexts small and secrets out of images.
+**/node_modules
+**/.next
+**/dist
+**/build
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+.git
+.github
+docs
+**/*.md
+!**/README.md
+
+.env
+.env.*
+!.env.example
+*.pem
+service-account*.json
+gcp-*.json
+
+# agent tooling — not needed inside runtime images
+.claude
+.claude-plugin
+.codex-plugin
+.agents
+.gemini
+.opencode
+skills
+agents
+references
+hooks

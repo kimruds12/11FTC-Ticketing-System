@@ -1,71 +1,47 @@
-# ==============================
-# Dependencies
-# ==============================
+# dependencies
 node_modules/
 .pnpm-store/
 
-# ==============================
-# Build outputs
-# ==============================
+# builds
 dist/
 build/
 .next/
 out/
+*.tsbuildinfo
 
-# ==============================
-# Environment & secrets
-# ==============================
+# turbo
+.turbo/
+
+# env & secrets — NEVER commit real values
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 *.pem
+service-account*.json
+gcp-*.json
+# raw pasted secret / env dumps — never commit
+*ENV.txt
+*.env.txt
+secrets/
 
-# ==============================
-# IDE & editor
-# ==============================
-.vscode/settings.json
-.idea/
-*.swp
-*.swo
-*~
-
-# ==============================
-# OS files
-# ==============================
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# ==============================
-# Testing & coverage
-# ==============================
+# test / coverage
 coverage/
 .nyc_output/
 
-# ==============================
-# Debug logs
-# ==============================
+# logs
+*.log
 npm-debug.log*
 pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
 
-# ==============================
-# TypeScript
-# ==============================
-*.tsbuildinfo
-tsconfig.tsbuildinfo
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
 
-# ==============================
-# Prisma
-# ==============================
-packages/database/prisma/migrations/**/migration_lock.toml
+# agent local/personal settings — committed team settings live in .claude/settings.json
+**/.claude/settings.local.json
 
-# ==============================
-# Misc
-# ==============================
-*.log
-.turbo/
+# google application credentials
+/google_application_credentials

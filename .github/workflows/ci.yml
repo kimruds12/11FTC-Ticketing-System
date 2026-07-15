@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm version comes from package.json "packageManager" — do NOT also set it here,
+      # or action-setup errors with ERR_PNPM_BAD_PM_VERSION on the duplicate.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck (tsc --noEmit, strict)
+        run: pnpm typecheck
+
+# ─────────────────────────────────────────────────────────────────────────────────────
+# DEFERRED — turn these on one-by-one as modules land. Kept here (not deleted) so re-enabling
+# is a copy-paste, not a rewrite. All of them pass TODAY except `test:concurrency`, which is
+# the intentionally-RED spec-gate for M3 (see .claude/rules/numbering.md).
+#
+# The repo-integrity guards below are cheap and green now — you can move them back up into
+# `steps:` at any time without needing any services:
+#
+#       - name: Agent instructions in sync with CLAUDE.md
+#         run: pnpm check:agents
+#       - name: Skill mirrors in sync with canonical skills/
+#         run: pnpm check:skills
+#       - name: No DELETE against tickets / audit_log (FR-9, FR-35)
+#         run: pnpm check:no-delete
+#       - name: Requirements <-> design traceability
+#         run: pnpm check:traceability
+#
+# Unit tests (enable when the first *.spec.ts lands):
+#
+#       - name: Test
+#         run: pnpm test
+#
+# Concurrency gate for M3 — enable when you implement NumberingService. It needs Postgres,
+# so ALSO add the `services:` + `env:` block (below) at the JOB level (a sibling of `steps:`):
+#
+#       - name: Concurrency — 50 encodes, one date, 50 distinct numbers (FR-4/FR-5)
+#         run: pnpm test:concurrency
+#
+#     services:
+#       postgres:
+#         image: postgres:16
+#         env:
+#           POSTGRES_PASSWORD: postgres
+#           POSTGRES_DB: ticketing_test
+#         ports: ["5432:5432"]
+#         options: >-
+#           --health-cmd "pg_isready -U postgres"
+#           --health-interval 5s --health-timeout 5s --health-retries 10
+#       redis:
+#         image: redis:7
+#         ports: ["6379:6379"]
+#         options: >-
+#           --health-cmd "redis-cli ping"
+#           --health-interval 5s --health-timeout 5s --health-retries 10
+#     env:
+#       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ticketing_test
+#       REDIS_URL: redis://localhost:6379
+# ─────────────────────────────────────────────────────────────────────────────────────
