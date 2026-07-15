@@ -1,0 +1,107 @@
+# Sequence Diagram — Sync Worker → Google Sheets
+# Paste into https://play.d2lang.com/
+#
+# REV 4 fix: every note now has a UNIQUE key. Reusing `w.note` declared one
+#            object five times, which D2 stretched across the whole diagram as
+#            a grey band. Group-wrapped `alt` blocks also double-shaded; the
+#            alt blocks are now top level.
+
+shape: sequence_diagram
+
+q: Redis Queue
+w: Sync Worker
+db: PostgreSQL
+sa: GCP Service Account
+gs: Google Sheets API v4
+raw: "_raw tab (append-only)"
+view: "Tickets tab (QUERY view)"
+ops: Ops Alert
+
+q -> w: "SyncTicketJob"
+
+claim: Claim a batch of pending work {
+  w -> db: "SELECT * FROM sync_outbox\nWHERE status = 'PENDING'\nORDER BY created_at\nLIMIT 100 FOR UPDATE SKIP LOCKED"
+  db -> w: "up to 100 outbox rows"
+  w.n1: "SKIP LOCKED lets several workers\nrun without fighting over rows"
+}
+
+project: Project each ticket to a sheet row {
+  w -> db: "JOIN tickets, employees,\nusers, lookups"
+  db -> w: "names + labels"
+  w.n2: "IDs resolved to display names HERE,\nat the boundary — never stored\ndenormalized in Postgres"
+}
+
+auth: Authenticate to Google {
+  w -> sa: "sign JWT with service account key"
+  sa -> gs: "exchange for access token"
+  gs -> sa: "access token (1h)"
+  sa -> w: "token, cached until expiry"
+}
+
+write: {
+  new_ticket: {
+    w -> gs: "values.append → _raw"
+    gs -> raw: "row appended at the bottom"
+    raw -> gs: "updatedRange = _raw!A57"
+    gs -> w: "row 57"
+    w -> db: "UPDATE outbox SET status='SENT',\nraw_row_number = 57, sent_at = now()"
+  }
+  existing_row_cached: {
+    w -> gs: "values.update at _raw!A{raw_row_number}"
+    w.n3: "Safe because _raw is append-only —\nrow 57 is row 57 forever"
+    gs -> raw: "row updated in place"
+    gs -> w: "200 OK"
+    w -> db: "UPDATE outbox SET status='SENT'"
+  }
+  existing_row_not_cached: {
+    w -> gs: "values.get _raw!B:B"
+    gs -> w: "ticket_no column"
+    w.n4: "locate row_key (ticket_no) by CONTENT,\nnever by remembered position"
+    w -> gs: "values.update at the located row"
+    w -> db: "UPDATE outbox SET status='SENT',\nraw_row_number = N"
+  }
+}
+
+raw -> view: "QUERY recalculates —\nnewest-first, automatically"
+
+failure: {
+  transient: {
+    gs -> w: "429 rate limited / 5xx"
+    w -> db: "UPDATE outbox SET attempts = attempts + 1,\nlast_error = :error"
+    w -> q: "requeue with exponential backoff"
+    w.n5: "Encoding is unaffected.\nThe user never sees this."
+  }
+  permanent: {
+    gs -> w: "403 / 400 after 5 attempts"
+    w -> db: "UPDATE outbox SET status='FAILED'"
+    w -> ops: "alert — dead letter"
+  }
+}
+
+note: |md
+  **What SyncOutbox is**
+
+  A to-do list for Google. One row per ticket whose sheet entry is out of date,
+  written in the same transaction as the ticket itself, so "the ticket exists" and
+  "the sheet owes an update" become true together. The worker drains it; `status`
+  moves PENDING → SENT, or → FAILED after five attempts.
+
+  It lives in Postgres rather than only in Redis for that reason: a Redis dispatch
+  can be lost while the ticket commits, and nothing would ever know the sheet was
+  stale. The Redis job is only a nudge — the outbox is the record.
+
+  **Why this runs out of band**
+
+  Google Sheets is slow, rate limited (~60 writes/min/user), and owned by someone
+  else. Inside the encoding request, every ticket save would inherit Google's latency
+  and every Google outage would look like the system being down. The outbox buys
+  separation: the ticket is safe the moment it commits, and the sheet catches up.
+
+  **Batching matters most at backfill.** The existing sheet history goes through this
+  same path. One batched call per 100 rows stays under the rate limit; 100 individual
+  calls will not.
+
+  **`raw_row_number` is only ever a cache.** If it is missing or stale, the worker
+  falls back to locating the row by `row_key`. Correctness never depends on the
+  cached index — that was the original bug.
+| {near: bottom-center; shape: text}

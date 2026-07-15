@@ -1,37 +1,36 @@
 {
-  "name": "temporary-app",
-  "version": "0.1.0",
+  "name": "@11ftc/monorepo",
+  "version": "0.0.0",
   "private": true,
+  "description": "11FTC Ticketing Management System — pnpm workspace monorepo",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@prisma/client": "^7.8.0",
-    "bcryptjs": "^3.0.3",
-    "date-fns": "^4.4.0",
-    "google-auth-library": "^10.9.0",
-    "googleapis": "^173.0.0",
-    "jsonwebtoken": "^9.0.3",
-    "lucide-react": "^1.24.0",
-    "next": "16.2.10",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "recharts": "^3.9.2"
+    "dev": "pnpm -r --parallel run dev",
+    "dev:web": "pnpm --filter @11ftc/web dev",
+    "dev:api": "pnpm --filter @11ftc/api start:dev",
+    "dev:worker": "pnpm --filter @11ftc/sync-worker start:dev",
+    "build": "pnpm -r run build",
+    "build:web": "pnpm --filter @11ftc/web build",
+    "build:api": "pnpm --filter @11ftc/api build",
+    "lint": "pnpm -r run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm -r run test:e2e",
+    "db:generate": "pnpm --filter @11ftc/database generate",
+    "db:migrate": "pnpm --filter @11ftc/database migrate:dev",
+    "db:migrate:prod": "pnpm --filter @11ftc/database migrate:deploy",
+    "db:seed": "pnpm --filter @11ftc/database seed",
+    "db:studio": "pnpm --filter @11ftc/database studio",
+    "clean": "pnpm -r exec -- rm -rf node_modules dist .next .turbo",
+    "typecheck": "pnpm -r run typecheck"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.10",
-    "prisma": "^7.8.0",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
+    "prettier": "^3.5.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.9"
 }

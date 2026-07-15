@@ -1,0 +1,140 @@
+# 11FTC Ticketing Management System — Component Diagram
+# Paste into https://play.d2lang.com/  |  Layout engine: elk
+# D2 rendering of the same components as the Structurizr component view in
+# workspace.dsl. Use whichever your documentation format requires.
+
+direction: down
+
+title: |md
+  # Component Diagram
+| {near: top-center; shape: text; style.font-size: 26}
+
+spa: "Web Application\n«Next.js»" {
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+
+  encode_ui: "Ticket Encoding Form\nstatus settable at creation"
+  queue_ui: "Ticket Queue / Search"
+  dash_ui: "Analytics Dashboard"
+  admin_ui: "Admin Console\n(users, employees, lookups)"
+}
+
+api: "Application API\n«REST»" {
+  style.fill: "#1f6feb"
+  style.font-color: "#ffffff"
+
+  presentation: Presentation Layer {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+    ticket_ctl: "TicketController"
+    emp_ctl: "EmployeeController"
+    analytics_ctl: "AnalyticsController"
+    admin_ctl: "AdminController"
+  }
+
+  cross: Cross-cutting {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+    guard: "AuthRbacGuard\n«middleware»\nenforces permission matrix"
+    validator: "RequestValidator"
+  }
+
+  domain: Domain Layer {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+    ticket_svc: "TicketService\n«transaction boundary»"
+    numgen: "TicketNumberGenerator\nscope_key"
+    emp_res: "EmployeeResolver\nsearch + dedupe"
+    state: "TicketStateMachine\nOpen · Ongoing · Closed"
+    auditor: "AuditLogger"
+    analytics_svc: "AnalyticsService"
+    outbox_w: "SyncOutboxWriter"
+  }
+
+  data: Data Access Layer {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+    repos: "Repositories\nTicket · Employee · User\nSequence · Audit · Outbox · Lookup"
+  }
+}
+
+worker: "Sync Worker\n«queue consumer»" {
+  style.fill: "#1f6feb"
+  style.font-color: "#ffffff"
+
+  drainer: "OutboxDrainer\nFOR UPDATE SKIP LOCKED"
+  projector: "SheetRowProjector\nIDs → names"
+  sheets_client: "SheetsApiClient\nbatching + backoff"
+  locator: "RowLocator\nby row_key, not position"
+  token: "ServiceAccountTokenProvider"
+}
+
+db: "PostgreSQL" {shape: cylinder; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+redis: "Redis\nqueue + analytics cache" {shape: cylinder; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+gsheets: "Google Sheets API" {shape: rectangle; style.fill: "#8b949e"; style.font-color: "#ffffff"}
+idp: "Google Workspace SSO" {shape: rectangle; style.fill: "#8b949e"; style.font-color: "#ffffff"}
+
+# --- SPA → API ---
+spa.encode_ui -> api.presentation.ticket_ctl: "POST /tickets" {style.stroke: "#0b3d91"}
+spa.encode_ui -> api.presentation.emp_ctl: "GET /employees?q=" {style.stroke: "#0b3d91"}
+spa.queue_ui -> api.presentation.ticket_ctl: "GET /tickets"
+spa.dash_ui -> api.presentation.analytics_ctl: "GET /analytics"
+spa.admin_ui -> api.presentation.admin_ctl: "CRUD"
+
+# --- API internals ---
+api.presentation.ticket_ctl -> api.cross.guard
+api.presentation.emp_ctl -> api.cross.guard
+api.presentation.analytics_ctl -> api.cross.guard
+api.presentation.admin_ctl -> api.cross.guard
+api.cross.guard -> idp: "verify token"
+api.presentation.ticket_ctl -> api.cross.validator
+api.presentation.ticket_ctl -> api.domain.ticket_svc
+api.presentation.emp_ctl -> api.domain.emp_res
+api.presentation.analytics_ctl -> api.domain.analytics_svc
+
+api.domain.ticket_svc -> api.domain.state: "validate transition"
+api.domain.ticket_svc -> api.domain.numgen: "allocate number"
+api.domain.ticket_svc -> api.domain.emp_res: "resolve employee"
+api.domain.ticket_svc -> api.domain.auditor: "record change"
+api.domain.ticket_svc -> api.domain.outbox_w: "enqueue sync"
+
+api.domain.numgen -> api.data.repos
+api.domain.emp_res -> api.data.repos
+api.domain.auditor -> api.data.repos
+api.domain.outbox_w -> api.data.repos
+api.domain.analytics_svc -> api.data.repos
+api.domain.analytics_svc -> redis: "cache 5 min"
+api.data.repos -> db
+api.domain.outbox_w -> redis: "dispatch job (after commit)"
+
+# --- Worker ---
+redis -> worker.drainer: "consume"
+worker.drainer -> db: "claim batch"
+worker.drainer -> worker.projector
+worker.projector -> db: "join for names"
+worker.projector -> worker.locator
+worker.locator -> worker.sheets_client
+worker.sheets_client -> worker.token: "get token"
+worker.token -> gsheets: "OAuth 2.0 JWT"
+worker.sheets_client -> gsheets: "batchUpdate → _raw"
+worker.sheets_client -> db: "mark SENT"
+
+notes: |md
+  **Structural rules**
+
+  - **`TicketService` is the transaction boundary.** Number allocation, the ticket
+    write, audit entries, and the outbox row all commit together. Nothing below it
+    opens its own transaction — that is what would break the guarantee.
+  - **`TicketStateMachine` is a real component, not documentation.** Diagram 07 is
+    enforced here; illegal transitions are rejected at the domain layer, not left to
+    the UI to prevent.
+  - **`SheetRowProjector` lives in the worker, not the API.** Denormalization is a
+    boundary concern (FR-24) — the database keeps IDs, and names are resolved only
+    when a sheet row is being built.
+  - **`RowLocator` is the component that keeps rev 1's bug from returning.** It
+    resolves a row by `row_key`, never by remembered position.
+  - **Only `outbox_w` talks to Redis for dispatch, and only after commit.** Dispatch
+    inside the transaction races the worker.
+  - This is the same decomposition as the Structurizr component view in
+    `workspace.dsl`. Two renderings, one design — if you change one, change both.
+| {near: bottom-center; shape: text}

@@ -1,0 +1,78 @@
+# 11FTC Ticketing Management System — Context Diagram (DFD Level 0)
+# Paste into https://play.d2lang.com/  |  Layout engine: elk
+# Yourdon/DeMarco notation: circle = process, rectangle = external entity.
+
+direction: right
+
+title: |md
+  # Data Flow Diagram — Level 0 (Context)
+| {near: top-center; shape: text; style.font-size: 26}
+
+staff: "IT Staff\n[external entity]" {
+  shape: rectangle
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+}
+
+admin: "IT Administrator\n[external entity]" {
+  shape: rectangle
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+}
+
+employee: "Employee\n[external entity]" {
+  shape: rectangle
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+}
+
+sys: "0\n11FTC Ticketing\nManagement System" {
+  shape: circle
+  style.fill: "#1f6feb"
+  style.font-color: "#ffffff"
+  width: 220
+  height: 220
+}
+
+sheets: "Google Sheets\nIT Tracker\n[external entity]" {
+  shape: rectangle
+  style.fill: "#8b949e"
+  style.font-color: "#ffffff"
+}
+
+idp: "Google Workspace SSO\n[external entity]" {
+  shape: rectangle
+  style.fill: "#8b949e"
+  style.font-color: "#ffffff"
+}
+
+# --- data flows ---
+employee -> staff: "IT concern\n(verbal — outside system boundary)" {style.stroke-dash: 3; style.font-size: 11}
+
+staff -> sys: "ticket details, employee name,\ndepartment, main issue, concern,\nstatus updates, remarks"
+sys -> staff: "ticket no., ticket list,\nticket history, dashboard"
+
+admin -> sys: "employee records, user records,\nlookup values, sync configuration,\nvoid requests"
+sys -> admin: "reports, dashboard metrics,\naudit trail, sync status"
+
+sys -> sheets: "ticket rows\n(Date, Ticket No, Employee, Department,\nMain Issue, Concern, Assigned To,\nStatus, Remarks)"
+sheets -> sys: "acknowledgement / API errors\n— NO ticket data returns" {style.stroke-dash: 3; style.stroke: "#d1242f"}
+
+sys -> idp: "credentials"
+idp -> sys: "identity assertion"
+
+staff -> sheets: "reads newest-first view" {style.stroke-dash: 3}
+
+note: |md
+  **Reading this diagram**
+
+  - **The Google Sheets flow is deliberately one-way.** The only return arrow
+    carries acknowledgements and errors — never ticket data. This is FR-22, and it
+    is the single most important constraint on the diagram: the moment data flows
+    back, you own a conflict-resolution problem the SRS has no rule for.
+  - **Employee sits outside the boundary.** They have no login and exchange no data
+    with the system. The concern reaches the system only after IT Staff encodes it.
+    The dashed arrow is context, not a system flow.
+  - IT Staff also *reads* the sheet directly (dashed) — this is a human reading a
+    Google tab, not a system interface, but it is why FR-25 exists.
+| {near: bottom-center; shape: text}

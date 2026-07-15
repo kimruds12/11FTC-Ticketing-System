@@ -1,0 +1,84 @@
+# Ticket encoding + concurrency-safe number generation (rev 2)
+# Paste into https://play.d2lang.com/
+#
+# REV 2: sequence keyed by scope_key, so the same code serves either
+#        date-scoped ("2026-07-15") or year-scoped ("2026") numbering.
+
+shape: sequence_diagram
+
+ui: Web App
+api: Application API
+svc: Ticket Service
+res: Employee Resolver
+gen: Ticket Number Generator
+db: PostgreSQL
+ob: Sync Outbox
+q: Redis Queue
+
+ui -> api: "POST /tickets\n{date, employee_name, department,\n main_issue, concern, assigned_to}"
+api -> svc: validate + dispatch
+
+svc -> db: "BEGIN"
+
+resolve: Resolve employee (dynamic input) {
+  svc -> res: resolve(name, department)
+  res -> db: "SELECT ... WHERE name_normalized = :name"
+  alt: {
+    found: {
+      db -> res: existing employee_id
+    }
+    not_found: {
+      res -> db: "INSERT INTO employees (...) RETURNING employee_id"
+      db -> res: new employee_id
+    }
+  }
+  res -> svc: employee_id
+}
+
+number: Allocate ticket number {
+  svc -> gen: "nextNumber(date)"
+  gen.scope: "scope_key = config.numbering == 'DATE'\n ? to_char(date, 'YYYY-MM-DD')\n : to_char(date, 'YYYY')"
+  gen -> db: |sql
+    INSERT INTO ticket_sequence (scope_key, last_sequence, updated_at)
+    VALUES (:scope_key, 1, now())
+    ON CONFLICT (scope_key)
+    DO UPDATE SET last_sequence = ticket_sequence.last_sequence + 1,
+                  updated_at = now()
+    RETURNING last_sequence;
+  | {
+    style.font-size: 11
+  }
+  db -> gen: "last_sequence (row is locked\nuntil COMMIT — concurrent\nencoders queue here)"
+  gen -> svc: "ticket_no = format(scope, seq)\nDATE → IT-2026-0715-001\nYEAR → IT-2026-0174"
+}
+
+persist: Persist + audit + outbox {
+  svc -> db: "INSERT INTO tickets (..., sequence_scope, sequence_number)"
+  svc -> db: "INSERT INTO audit_log (action='CREATE', ...)"
+  svc -> ob: "INSERT INTO sync_outbox\n(operation='UPSERT', row_key=ticket_no, payload)"
+  ob -> db: write
+  svc -> db: "COMMIT"
+}
+
+svc -> q: "dispatch SyncTicketJob (after commit)"
+svc -> api: ticket DTO
+api -> ui: "201 Created { ticket_no, ... }"
+
+note: |md
+  **Why this ordering matters**
+
+  1. The sequence row is locked *inside* the same transaction as the
+     ticket insert. Two IT staff encoding at the same second cannot
+     receive the same number.
+  2. `scope_key` is the only thing that differs between date-scoped and
+     year-scoped numbering — one config value, same locking, same code.
+     **This question is still open; see §3 of the design doc.**
+  3. Backdating works for free under either scheme. Note the behavioural
+     difference: date-scoped continues that date's run; year-scoped hands
+     out the next global number, so a backdated ticket can carry a higher
+     number than tickets on later dates.
+  4. The outbox row is written in the same transaction, so a ticket can
+     never exist without a pending sync (and vice versa).
+  5. The queue job is dispatched *after* commit, so the worker never
+     reads a row that hasn't landed yet.
+| {near: bottom-center; shape: text}

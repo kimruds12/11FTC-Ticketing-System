@@ -1,0 +1,200 @@
+# 11FTC Ticketing Management System — Class Diagram (Domain Model)
+# Paste into https://play.d2lang.com/  |  Layout engine: elk
+# Traceable to SRS rev 3 §5, §6, §6A, §6B, §6C, §7, §9, §9A.
+
+direction: right
+
+title: |md
+  # Class Diagram — Domain Model
+| {near: top-center; shape: text; style.font-size: 26}
+
+Ticket: {
+  shape: class
+  "-ticket_id": UUID
+  "-ticket_no": String
+  "-date": Date
+  "-sequence_scope": String
+  "-sequence_number": int
+  "-concern": String
+  "-status": TicketStatus
+  "-remarks": String
+  "-ongoing_at": DateTime
+  "-closed_at": DateTime
+  "+markOngoing()": void
+  "+close(remarks: String)": void
+  "+canTransitionTo(s: TicketStatus)": bool
+  "+isFirstTimeFix()": bool
+}
+
+TicketStatus: {
+  shape: class
+  "«enumeration»": ""
+  "OPEN": ""
+  "ONGOING": ""
+  "CLOSED": ""
+}
+
+Employee: {
+  shape: class
+  "-employee_id": UUID
+  "-name": String
+  "-name_normalized": String
+  "-is_active": bool
+  "+normalize(name: String)": String
+  "+deactivate()": void
+}
+
+Department: {
+  shape: class
+  "-department_id": UUID
+  "-name": String
+  "-is_active": bool
+}
+
+MainIssueCategory: {
+  shape: class
+  "-main_issue_id": UUID
+  "-label": String
+  "-sort_order": int
+  "-is_active": bool
+}
+
+User: {
+  shape: class
+  "-user_id": UUID
+  "-email": String
+  "-full_name": String
+  "-role": Role
+  "-is_active": bool
+  "+can(action: Capability)": bool
+}
+
+Role: {
+  shape: class
+  "«enumeration»": ""
+  "IT_ADMINISTRATOR": ""
+  "IT_STAFF": ""
+}
+
+TicketSequence: {
+  shape: class
+  "-scope_key": String
+  "-last_sequence": int
+  "-updated_at": DateTime
+  "+allocate()": int
+}
+
+AuditLog: {
+  shape: class
+  "-audit_log_id": UUID
+  "-action": AuditAction
+  "-field_name": String
+  "-previous_value": String
+  "-new_value": String
+  "-updated_at": DateTime
+}
+
+AuditAction: {
+  shape: class
+  "«enumeration»": ""
+  "CREATE / UPDATE": ""
+  "ASSIGN / STATUS_CHANGE": ""
+  "CLOSE": ""
+}
+
+SyncOutbox: {
+  shape: class
+  "-outbox_id": UUID
+  "-row_key": String
+  "-payload": JSON
+  "-status": SyncStatus
+  "-attempts": int
+  "-raw_row_number": int
+  "-last_error": String
+  "+markSent(row: int)": void
+  "+markFailed(e: String)": void
+}
+
+SyncStatus: {
+  shape: class
+  "«enumeration»": ""
+  "PENDING / SENT / FAILED": ""
+}
+
+TicketNumberGenerator: {
+  shape: class
+  "«service»": ""
+  "-scheme": NumberingScheme
+  "+next(date: Date)": String
+  "-scopeKeyFor(date: Date)": String
+}
+
+NumberingScheme: {
+  shape: class
+  "«enumeration»": ""
+  "DATE_SCOPED": ""
+  "YEAR_SCOPED": ""
+}
+
+TicketService: {
+  shape: class
+  "«service»": ""
+  "«transaction boundary»": ""
+  "+encode(cmd: EncodeTicketCmd)": Ticket
+  "+close(id, remarks)": Ticket
+  "+markOngoing(id)": Ticket
+  "+update(id, cmd)": Ticket
+}
+
+EmployeeResolver: {
+  shape: class
+  "«service»": ""
+  "+resolveOrCreate(name, dept)": Employee
+  "+search(q: String)": "List<Employee>"
+}
+
+# ---- associations ----
+Ticket -> Employee: "reported by\n1..1" {source-arrowhead.shape: diamond}
+Ticket -> MainIssueCategory: "classified as\n1..1"
+Ticket -> User: "assigned_to 0..1\ncreated_by 1..1"
+Ticket -> TicketStatus: "«uses»" {style.stroke-dash: 3}
+Ticket -> TicketSequence: "numbered from\n1..1"
+Employee -> Department: "belongs to\n1..1"
+User -> Role: "«uses»" {style.stroke-dash: 3}
+AuditLog -> Ticket: "tracks\n0..* → 1" {style.stroke-width: 2}
+AuditLog -> User: "performed by\n1..1"
+AuditLog -> AuditAction: "«uses»" {style.stroke-dash: 3}
+SyncOutbox -> Ticket: "mirrors\n0..* → 1"
+SyncOutbox -> SyncStatus: "«uses»" {style.stroke-dash: 3}
+TicketNumberGenerator -> TicketSequence: "«uses»" {style.stroke-dash: 3}
+TicketNumberGenerator -> NumberingScheme: "«configured by»" {style.stroke-dash: 3}
+TicketService -> Ticket: "«creates / mutates»" {style.stroke-dash: 3}
+TicketService -> TicketNumberGenerator: "«uses»" {style.stroke-dash: 3}
+TicketService -> EmployeeResolver: "«uses»" {style.stroke-dash: 3}
+TicketService -> AuditLog: "«creates»" {style.stroke-dash: 3}
+TicketService -> SyncOutbox: "«creates»" {style.stroke-dash: 3}
+EmployeeResolver -> Employee: "«creates»" {style.stroke-dash: 3}
+
+notes: |md
+  **Design notes**
+
+  - **`Ticket.canTransitionTo()` is where diagram 07 lives in code.** The state
+    machine is behaviour on the entity, not a lookup table and not a UI concern.
+  - **`Employee.normalize()` is the single source of the FR-13 rule.** It must be the
+    same function that computes the stored `name_normalized`, or the unique index and
+    the lookup will disagree and inline creation (FR-11) starts producing duplicates.
+  - **`TicketNumberGenerator.scopeKeyFor()` is the entire cost of OPEN-1.** One method
+    formats a date into either `'2026-07-15'` or `'2026'`. Everything downstream —
+    the table, the lock, the uniqueness constraint — is identical under both schemes.
+  - **`TicketService` is the only transaction boundary.** It is why `AuditLog` and
+    `SyncOutbox` are shown as created *by the service* rather than by `Ticket`: they
+    must commit with the change, and an entity cannot guarantee that.
+  - **`Ticket.isFirstTimeFix()`** returns `status == CLOSED && ongoing_at == null`.
+    The department fixes most concerns on the spot, so this — not resolution rate —
+    is the metric that says something interesting about the work.
+  - **There is no `void()` and no `reopen()`.** Closed is terminal; a recurrence is a
+    new ticket. Mis-encoded tickets are corrected via `update()`, which the audit log
+    records.
+  - `Department` and `MainIssueCategory` exist as classes because FR-16 and FR-18
+    need controlled vocabularies. Their instances come from the IT team — **OPEN-4**.
+| {near: bottom-center; shape: text}

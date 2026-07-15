@@ -1,0 +1,65 @@
+# 11FTC Ticketing Management System — Ticket State Machine
+# Paste into https://play.d2lang.com/  |  Layout engine: elk
+#
+# REV 4: rebuilt around the department's actual process — three statuses,
+#        work-first encoding. The previous six-state ITSM queue model
+#        (Pending/Assigned/In Progress/Resolved/Closed) was never real.
+
+direction: right
+
+title: |md
+  # Ticket Lifecycle — State Transition Diagram
+| {near: top-center; shape: text; style.font-size: 26}
+
+start: "" {shape: circle; style.fill: "#24292f"; width: 30; height: 30}
+
+open: "Open\nlogged, not yet attempted" {shape: rectangle; style.border-radius: 20; style.fill: "#8b949e"; style.font-color: "#ffffff"}
+ongoing: "Ongoing\ncould not be finished now\n→ sets ongoing_at" {shape: rectangle; style.border-radius: 20; style.fill: "#d29922"; style.font-color: "#ffffff"}
+closed: "Closed\nsolved — terminal\n→ sets closed_at" {shape: rectangle; style.border-radius: 20; style.fill: "#1a7f37"; style.font-color: "#ffffff"}
+
+done: "" {shape: circle; style.fill: "#24292f"; style.stroke: "#24292f"; style.stroke-width: 4; width: 30; height: 30}
+
+start -> closed: "encode a solved concern\n— the common path" {style.stroke-width: 3; style.stroke: "#1a7f37"}
+start -> ongoing: "encode a concern that\ncould not be finished" {style.stroke: "#d29922"}
+start -> open: "encode a concern not\nyet attempted"
+
+open -> ongoing: "attempted, not finished"
+open -> closed: "solved"
+ongoing -> closed: "solved later" {style.stroke-width: 2}
+
+closed -> done
+
+recur: "Recurrence → a NEW ticket.\nClosed never reopens." {shape: text; style.font-color: "#57606a"}
+closed -> recur: "problem comes back" {style.stroke-dash: 3; style.stroke: "#57606a"}
+
+notes: |md
+  **The department solves first, then records.** Encoding is a record of work done,
+  not a queue of work to do. That single fact shapes everything here.
+
+  **Creation can enter any of the three states.** The thick green arrow is the normal
+  case: the concern was fixed on the spot, and the ticket is written straight to
+  Closed. A model that forced every ticket to start at Open and be clicked through to
+  Closed would make staff perform a three-step workflow to record a fix they already
+  made — the fastest way to get a system abandoned in favour of the spreadsheet.
+
+  **Open is rare and real.** It means logged but not yet attempted — reported when
+  nobody could act on it yet. It is not a mandatory first stop.
+
+  **Closed is terminal. There is no reopen.** A recurring problem is a new ticket.
+  This is a deliberate departmental rule, and it has a consequence worth stating: a
+  printer that fails four times produces four tickets, not one ticket closed four
+  times. Volume counts will reflect that, and they should — recurrence frequency
+  becomes visible rather than hidden inside one ticket's history.
+
+  **There is no Voided status.** Encoding mistakes are corrected by editing the
+  ticket, and the audit log preserves what changed. Tickets are never deleted:
+  deletion would leave a gap in the number sequence and orphan the row already
+  written to the sheet.
+
+  **`ongoing_at` is what makes first-time fix rate measurable.** A ticket closed with
+  `ongoing_at IS NULL` was fixed on the spot; one with a value went Ongoing first. No
+  extra column is needed to tell those apart.
+
+  Every transition writes an audit entry and a sync outbox row in the same
+  transaction as the status change. There is no path that changes status without both.
+| {near: bottom-center; shape: text}

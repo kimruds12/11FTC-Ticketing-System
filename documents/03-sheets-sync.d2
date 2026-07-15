@@ -1,0 +1,135 @@
+# Google Sheets synchronization — outbox + append-only raw tab (rev 2)
+# Paste into https://play.d2lang.com/
+# Suggested layout engine: elk
+#
+# REV 2: the IT sheet is ordered NEWEST-FIRST (new tickets inserted at the top).
+#        Top-insertion shifts every existing row down by one, which invalidates
+#        any stored row index. Storage is therefore separated from presentation.
+
+direction: right
+
+title: |md
+  # Google Sheets Sync — rev 2 (newest-first display, append-only storage)
+| {near: top-center; shape: text; style.font-size: 26}
+
+app: Application API {
+  shape: rectangle
+  style.fill: "#1f6feb"
+  style.font-color: "#ffffff"
+}
+
+db: PostgreSQL {
+  shape: cylinder
+  style.fill: "#4c8dfa"
+  style.font-color: "#ffffff"
+
+  tickets: tickets
+  outbox: "sync_outbox\n(row_key, raw_row_number)"
+}
+
+q: Redis Queue {
+  shape: queue
+  style.fill: "#4c8dfa"
+  style.font-color: "#ffffff"
+}
+
+worker: Sync Worker {
+  style.fill: "#1f6feb"
+  style.font-color: "#ffffff"
+
+  claim: "1. Claim batch\nSELECT ... WHERE status='PENDING'\nORDER BY created_at\nLIMIT 100 FOR UPDATE SKIP LOCKED"
+  map: "2. Project to sheet row\nemployee_id → name\nassigned_to → technician name\nmain_issue_id → label"
+  locate: "3. Locate row in _raw\nraw_row_number if cached,\nelse find row_key (ticket_no)\nin column B"
+  push: "4. New → values.append to _raw\n Existing → values.update at\n cached row (rows never shift)"
+  mark: "5. Mark SENT +\ncache raw_row_number"
+  retry: "On failure: attempts++,\nexponential backoff,\nstatus=FAILED after 5 tries"
+
+  claim -> map -> locate -> push -> mark
+  push -> retry: "429 / 5xx"
+  retry -> claim: "requeue"
+}
+
+gcp: Google Cloud Platform {
+  style.fill: "#8b949e"
+  style.font-color: "#ffffff"
+
+  sa: "Service Account\n(JSON key or Workload Identity)"
+  api: "Sheets API v4"
+}
+
+sheet: Google Sheet — IT Tracker {
+  style.fill: "#8b949e"
+  style.font-color: "#ffffff"
+
+  raw: "_raw (hidden, protected)\nAPPEND-ONLY — row N never moves\nDate | Ticket No | Employee | Dept |\nMain Issue | Concern | Assigned To |\nStatus | Remarks" {
+    shape: page
+  }
+
+  view: "Tickets (what the IT team sees)\n=QUERY(_raw!A2:I,\n \"select * where A is not null\n order by A desc, B desc\", 0)\n→ newest at the top, as today" {
+    shape: page
+  }
+
+  raw -> view: "recalculates automatically"
+}
+
+dlq: Ops Alert / Dead-letter view {
+  shape: hexagon
+  style.fill: "#d1242f"
+  style.font-color: "#ffffff"
+}
+
+app -> db.tickets: "write ticket"
+app -> db.outbox: "write outbox row\n(same transaction)"
+app -> q: "dispatch job\n(after commit)"
+q -> worker.claim: "consume"
+worker.claim -> db.outbox: "read PENDING"
+worker.map -> db.tickets: "join for names"
+worker.push -> gcp.api: "HTTPS"
+gcp.sa -> gcp.api: "OAuth 2.0 access token"
+worker.push -> gcp.sa: "sign JWT"
+gcp.api -> sheet.raw: "append / update"
+worker.mark -> db.outbox: "status = SENT"
+worker.retry -> dlq: "after max attempts"
+
+rules: |md
+  **Why the raw tab exists**
+
+  The IT team's sheet shows newest-first, meaning each new ticket is
+  inserted at the top and **every row below shifts down by one**. A stored
+  row index is therefore stale the moment the next ticket is encoded — a
+  retry or a status update would silently write to the wrong ticket's row.
+  That is data corruption, not a cosmetic bug.
+
+  Splitting the sheet fixes it at the root: the worker only ever *appends*
+  to `_raw`, so row N is row N forever, and the `Tickets` tab reproduces the
+  newest-first order the team already expects via a QUERY formula. Nobody
+  has to change how they read the sheet.
+
+  **Trade-off to raise with the IT team before building this:** a QUERY
+  output range is computed, so the `Tickets` tab becomes read-only. If they
+  currently type remarks straight into the sheet, that workflow moves into
+  the app. This is arguably a feature — it is what "the database is the
+  system of record" actually means in practice — but it is a real change to
+  their day and should not arrive as a surprise.
+
+  **If they must keep hand-editing that tab**, the fallback is to insert at
+  index 1 with `InsertDimensionRequest` and pin identity to each row with
+  Sheets **developer metadata**, which survives row shifts. More API calls,
+  more moving parts, same correctness. Do not fall back to storing a bare
+  row index.
+
+  **Other rules (unchanged)**
+
+  - **One-way sync only** (DB → Sheet). Bidirectional editing creates write
+    conflicts the SRS has no rule to resolve. Protect `_raw` so only the
+    service account can write it.
+  - **Idempotency** — `row_key` (the ticket_no) identifies the row, so a
+    retried job updates rather than duplicating.
+  - **Rate limits** — ~60 write requests/minute/user. Batch 100 rows into one
+    call, especially during the historical backfill.
+  - **Denormalization happens at the boundary**, not in the DB. IDs stay in
+    Postgres; names are resolved only when projecting the sheet row.
+  - **Google Cloud Console setup**: enable the Sheets API → create a service
+    account → download the JSON key → share the spreadsheet with the service
+    account's email as Editor.
+| {near: bottom-center; shape: text}

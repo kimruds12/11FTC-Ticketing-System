@@ -1,0 +1,116 @@
+# Sequence Diagram — Encode-and-Close, and Ongoing → Closed
+# Paste into https://play.d2lang.com/
+#
+# REV 4: replaces 08-sequence-assign-resolve.d2, which modelled an
+#        assign → resolve → close workflow the department does not run.
+
+shape: sequence_diagram
+
+staff: IT Staff
+ui: Web App
+api: Application API
+guard: Auth / RBAC Guard
+svc: Ticket Service
+gen: Ticket Number Generator
+audit: Audit Logger
+ob: Sync Outbox
+db: PostgreSQL
+q: Redis Queue
+
+fix: Work happens before the ticket exists {
+  staff -> staff: "receives concern, fixes it\n(or cannot finish it now)"
+}
+
+encode: Encode the outcome {
+  staff -> ui: "open encoding form"
+  ui -> staff: "status defaults to Closed\n(the common case)"
+  staff -> ui: "employee, department, main issue,\nconcern, remarks, status"
+  ui -> api: "POST /tickets"
+  api -> guard: "check role"
+  guard -> api: "permitted"
+  api -> svc: "encode(cmd)"
+
+  svc -> db: "BEGIN"
+  svc -> gen: "nextNumber(date)"
+  gen -> db: "lock + increment scope_key"
+  db -> gen: "last_sequence"
+  gen -> svc: "ticket_no"
+
+  alt: {
+    solved_on_the_spot: {
+      svc.a: "status = Closed\nclosed_at = now()\nongoing_at stays NULL"
+      svc -> db: "INSERT ticket (status='Closed',\nclosed_at = now())"
+      svc.b: "ongoing_at IS NULL on a Closed\nticket = first-time fix"
+    }
+    could_not_finish: {
+      svc.c: "status = Ongoing\nongoing_at = now()"
+      svc -> db: "INSERT ticket (status='Ongoing',\nongoing_at = now())"
+    }
+    not_yet_attempted: {
+      svc.d: "status = Open\nno timestamps set"
+      svc -> db: "INSERT ticket (status='Open')"
+    }
+  }
+
+  svc -> audit: "log(CREATE)"
+  audit -> db: "INSERT audit_log"
+  svc -> ob: "enqueue UPSERT"
+  ob -> db: "INSERT sync_outbox"
+  svc -> db: "COMMIT"
+  svc -> q: "dispatch SyncTicketJob"
+  api -> ui: "201 Created"
+  ui -> staff: "ticket_no"
+}
+
+later: Close an Ongoing ticket, later {
+  staff -> ui: "open ticket, add remarks, close"
+  ui -> api: "PATCH /tickets/{id}/close"
+  api -> guard: "check role"
+  api -> svc: "close(ticket_id, remarks)"
+  svc -> db: "BEGIN"
+  svc -> db: "SELECT ... FOR UPDATE"
+  db -> svc: "current state = Ongoing"
+  svc.check: "legal? Open→Closed and\nOngoing→Closed are the only\npaths into Closed (see 07)"
+  svc -> db: "UPDATE status='Closed',\nremarks = :remarks, closed_at = now()"
+  svc -> audit: "log(STATUS_CHANGE,\n'Ongoing' → 'Closed')"
+  svc -> audit: "log(UPDATE, remarks)"
+  audit -> db: "INSERT audit_log x2\n(one row per changed field)"
+  svc -> ob: "enqueue UPSERT"
+  svc -> db: "COMMIT"
+  svc -> q: "dispatch SyncTicketJob"
+  api -> ui: "200 OK"
+}
+
+reject: Closed is terminal {
+  staff -> ui: "problem came back"
+  ui -> staff: "Closed tickets do not reopen.\nEncode a new ticket."
+  staff -> ui: "encode new ticket → back to top"
+}
+
+note: |md
+  **Why the first block has no system in it**
+
+  The department fixes the problem, then writes it down. The ticket is a record, not
+  a work order. This is why the form defaults to Closed and why creation can enter
+  any of the three states directly — forcing every ticket through Open would add
+  clicks to record something already finished.
+
+  **The pattern every mutation follows**
+
+  Row lock → legality check → update → audit → outbox → commit → dispatch.
+
+  1. **`SELECT ... FOR UPDATE` before the transition check.** Without the lock, two
+     users acting on one ticket can both read `Ongoing`, both judge their transition
+     legal, and both write — last writer wins, and the audit log shows a transition
+     that never happened.
+  2. **The state machine in `07-ticket-state-machine.d2` is enforced in code.** The
+     three statuses are not a free-text field the UI happens to constrain.
+  3. **Audit writes one row per changed field**, not one per request. Closing an
+     Ongoing ticket with remarks changes two fields, so it emits two rows.
+  4. **The outbox row commits with the change** — never after, never separately.
+  5. **The queue job dispatches after commit.** Dispatching inside the transaction
+     races the worker: it can pick up the job and query a row that hasn't landed yet.
+
+  **Assignment is not in this diagram.** `assigned_to` records who handled the
+  concern; it is a field on the ticket, not a lifecycle stage. Nothing branches on it.
+| {near: bottom-center; shape: text}

@@ -1,0 +1,123 @@
+# 11FTC Ticketing Management System — DFD Level 1
+# Paste into https://play.d2lang.com/  |  Layout engine: elk
+# Circle = process, open rectangle = data store, filled rectangle = external entity.
+
+direction: down
+
+title: |md
+  # Data Flow Diagram — Level 1
+| {near: top-center; shape: text; style.font-size: 26}
+
+# ---------- external entities ----------
+staff: "IT Staff" {shape: rectangle; style.fill: "#0b3d91"; style.font-color: "#ffffff"}
+admin: "IT Administrator" {shape: rectangle; style.fill: "#0b3d91"; style.font-color: "#ffffff"}
+sheets: "Google Sheets\nIT Tracker" {shape: rectangle; style.fill: "#8b949e"; style.font-color: "#ffffff"}
+idp: "Google Workspace SSO" {shape: rectangle; style.fill: "#8b949e"; style.font-color: "#ffffff"}
+
+# ---------- processes ----------
+p1: "1.0\nAuthenticate &\nAuthorize" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p2: "2.0\nEncode\nTicket" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p3: "3.0\nGenerate\nTicket Number" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p4: "4.0\nResolve or Create\nEmployee" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p5: "5.0\nUpdate Ticket\nStatus" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p6: "6.0\nRecord\nAudit Entry" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p7: "7.0\nSynchronize\nto Sheet" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p8: "8.0\nGenerate\nAnalytics" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+p9: "9.0\nManage Master\nData" {shape: circle; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+
+# ---------- data stores ----------
+d1: "D1 | Tickets" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+d2: "D2 | Employees" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+d3: "D3 | Users" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+d4: "D4 | TicketSequence" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+d5: "D5 | AuditLog" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+d6: "D6 | SyncOutbox" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+d7: "D7 | Lookups\n(Departments,\nMain Issues)" {shape: page; style.fill: "#4c8dfa"; style.font-color: "#ffffff"}
+
+# ---------- flows: authentication ----------
+staff -> p1: "credentials"
+admin -> p1: "credentials"
+p1 -> idp: "verify"
+idp -> p1: "identity assertion"
+p1 -> d3: "read role"
+p1 -> p2: "authorized user_id + role"
+p1 -> p5: "authorized user_id + role"
+p1 -> p8: "authorized user_id + role"
+p1 -> p9: "authorized user_id + role"
+
+# ---------- flows: encoding ----------
+staff -> p2: "date, employee name, department,\nmain issue, concern, status, remarks"
+p2 -> p4: "employee name + department"
+p4 -> d2: "search by name_normalized"
+d2 -> p4: "existing employee_id"
+p4 -> d2: "new employee record"
+p4 -> p2: "employee_id"
+p2 -> d7: "validate main_issue_id"
+p2 -> p3: "request number for date"
+p3 -> d4: "lock + increment scope_key"
+d4 -> p3: "last_sequence"
+p3 -> p2: "ticket_no"
+p2 -> d1: "new ticket record"
+p2 -> p6: "CREATE event"
+p2 -> d6: "outbox row (same transaction)"
+p2 -> staff: "ticket_no confirmation"
+
+# ---------- flows: lifecycle ----------
+staff -> p5: "mark ongoing / close / edit"
+admin -> p5: "close / edit"
+p5 -> d1: "status + ongoing_at / closed_at"
+d1 -> p5: "current ticket state"
+p5 -> p6: "STATUS_CHANGE / ASSIGN / CLOSE"
+p5 -> d6: "outbox row"
+p5 -> staff: "updated ticket"
+
+# ---------- flows: audit ----------
+p6 -> d5: "field, previous, new,\nupdated_by, updated_at"
+d5 -> p8: "history"
+d5 -> admin: "audit trail"
+
+# ---------- flows: sync ----------
+d6 -> p7: "PENDING rows (batch)"
+d1 -> p7: "ticket fields"
+d2 -> p7: "employee name"
+d3 -> p7: "technician name"
+d7 -> p7: "main issue label"
+p7 -> sheets: "projected row → _raw tab\n(append-only)"
+sheets -> p7: "ack / error" {style.stroke-dash: 3}
+p7 -> d6: "SENT + raw_row_number\n(or FAILED + attempts)"
+
+# ---------- flows: analytics ----------
+staff -> p8: "date range filter"
+admin -> p8: "date range filter"
+d1 -> p8: "tickets"
+d2 -> p8: "department"
+d3 -> p8: "technician"
+d7 -> p8: "category labels"
+p8 -> staff: "daily/weekly/monthly metrics"
+p8 -> admin: "metrics + resolution rate"
+
+# ---------- flows: master data ----------
+admin -> p9: "employee, user, lookup maintenance"
+p9 -> d2: "employee records"
+p9 -> d3: "user records"
+p9 -> d7: "departments, categories"
+
+notes: |md
+  **Notes on this level**
+
+  - **3.0 and 2.0 share one transaction.** The DFD cannot express this, but the
+    number allocation, the ticket write, the audit entry, and the outbox row all
+    commit together or not at all. Two staff encoding at the same second is the case
+    this protects against — see design doc §3.2 and `02-ticket-number-sequence.d2`.
+  - **7.0 is asynchronous.** It is triggered by D6, not by an actor, and its failure
+    never blocks 2.0 or 5.0 (FR-26). This is why D6 exists at all rather than 2.0
+    calling Google directly.
+  - **The sheet returns no ticket data** (FR-22) — only acknowledgements and errors.
+  - **5.0 writes a status; it never deletes a row.** There is no Voided status and no
+    delete path — deletion would gap the sequence in D4 and orphan a row already sent
+    to the sheet. Mis-encoded tickets are corrected by editing, and 6.0 records it.
+  - **2.0 can write any of the three statuses directly.** The department fixes the
+    concern first and records it after, so most tickets are created already Closed.
+    Open and Ongoing are entered at creation only when that is what actually happened.
+  - **D7 is empty until OPEN-4** is answered by the IT team.
+| {near: bottom-center; shape: text}

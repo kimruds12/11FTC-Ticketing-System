@@ -1,0 +1,151 @@
+# 11FTC Ticketing Management System - Data Model
+# Paste into https://play.d2lang.com/
+# Suggested layout engine: elk
+#
+# REV 2 changes:
+#   - TicketSequence keyed by scope_key (handles date- OR year-scoped numbering)
+#   - SyncOutbox: sheet_row_number replaced by raw_row_number (append-only _raw tab)
+#   - Added row_key for locating rows without depending on visual order
+#
+# REV 3: role enum aligned to SRS 6C (VIEWER removed - it was invented,
+#        the SRS defines only two roles)
+#
+# REV 4: status ENUM rebuilt to the department's real process - Open, Ongoing,
+#        Closed only. Voided dropped. resolved_at/assigned_at replaced by
+#        ongoing_at/closed_at.
+
+direction: right
+
+title: |md
+  # 11FTC Ticketing — Entity Relationship Diagram (rev 2)
+| {near: top-center; shape: text; style.font-size: 28}
+
+users: User {
+  shape: sql_table
+  user_id: uuid {constraint: primary_key}
+  email: varchar UNIQUE
+  full_name: varchar
+  role: enum "IT_ADMINISTRATOR | IT_STAFF"
+  is_active: boolean
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+employees: Employee {
+  shape: sql_table
+  employee_id: uuid {constraint: primary_key}
+  name: varchar
+  name_normalized: varchar UNIQUE
+  department_id: uuid {constraint: foreign_key}
+  is_active: boolean
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+departments: Department {
+  shape: sql_table
+  department_id: uuid {constraint: primary_key}
+  name: varchar UNIQUE
+  is_active: boolean
+}
+
+main_issues: MainIssueCategory {
+  shape: sql_table
+  main_issue_id: uuid {constraint: primary_key}
+  label: varchar UNIQUE
+  sort_order: int
+  is_active: boolean
+}
+
+tickets: Ticket {
+  shape: sql_table
+  ticket_id: uuid {constraint: primary_key}
+  ticket_no: varchar UNIQUE
+  date: date
+  sequence_scope: varchar {constraint: foreign_key}
+  sequence_number: int
+  employee_id: uuid {constraint: foreign_key}
+  main_issue_id: uuid {constraint: foreign_key}
+  concern: text
+  assigned_to: uuid {constraint: foreign_key}
+  created_by: uuid {constraint: foreign_key}
+  status: enum "Open | Ongoing | Closed"
+  remarks: text
+  ongoing_at: timestamptz NULL
+  closed_at: timestamptz NULL
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+sequences: TicketSequence {
+  shape: sql_table
+  scope_key: varchar {constraint: primary_key}
+  last_sequence: int
+  updated_at: timestamptz
+}
+
+audit: AuditLog {
+  shape: sql_table
+  audit_log_id: uuid {constraint: primary_key}
+  ticket_id: uuid {constraint: foreign_key}
+  action: enum "CREATE | UPDATE | ASSIGN | STATUS_CHANGE | CLOSE"
+  field_name: varchar
+  previous_value: text
+  new_value: text
+  updated_by: uuid {constraint: foreign_key}
+  updated_at: timestamptz
+}
+
+outbox: SyncOutbox {
+  shape: sql_table
+  outbox_id: uuid {constraint: primary_key}
+  ticket_id: uuid {constraint: foreign_key}
+  operation: enum "UPSERT"
+  row_key: varchar
+  payload: jsonb
+  status: enum "PENDING | SENT | FAILED"
+  attempts: int
+  raw_row_number: int NULL
+  last_error: text NULL
+  created_at: timestamptz
+  sent_at: timestamptz NULL
+}
+
+# ---- relationships ----
+employees.department_id -> departments.department_id: belongs to
+tickets.employee_id -> employees.employee_id: reported by
+tickets.main_issue_id -> main_issues.main_issue_id: classified as
+tickets.assigned_to -> users.user_id: assigned to
+tickets.created_by -> users.user_id: encoded by
+tickets.sequence_scope -> sequences.scope_key: numbered from
+audit.ticket_id -> tickets.ticket_id: tracks
+audit.updated_by -> users.user_id: performed by
+outbox.ticket_id -> tickets.ticket_id: mirrors
+
+notes: |md
+  **Key constraints**
+
+  - `UNIQUE (sequence_scope, sequence_number)` on Ticket enforces the
+    "no duplicate numbers" rule under either numbering scheme.
+  - **`scope_key` defers the open numbering question.** Store `'2026-07-15'`
+    for date-scoped numbering or `'2026'` for year-scoped. Switching schemes
+    later is a config change plus a backfill — not a schema migration.
+  - `ticket_no` is a persisted, generated value — never recomputed on read,
+    so backdated rows keep their original number.
+  - `name_normalized` (lower + trim + collapse whitespace) blocks duplicate
+    employees created inline from the ticket form.
+  - `closed_at` is separate from `updated_at` so the dashboard can count
+    problems solved per period accurately. `ongoing_at` is set on first entry
+    to Ongoing; a Closed ticket with `ongoing_at IS NULL` was fixed on the
+    spot, which is what makes first-time fix rate measurable with no extra
+    column.
+  - `row_key` = the ticket_no. It locates the ticket's row in the sheet
+    **without depending on row position**, which the sheet's newest-first
+    ordering makes unreliable. `raw_row_number` is a cache of the row index
+    in the append-only `_raw` tab, where rows never shift.
+  - Index: `tickets (date)`, `tickets (status)`, `tickets (assigned_to, status)`,
+    `tickets (closed_at)`, `outbox (status, created_at)`.
+  - **There is no Voided status and no delete path.** Encoding errors are
+    corrected by editing; the audit log preserves the change. Deleting would
+    gap the number sequence and orphan the row already sent to the sheet.
+| {near: bottom-center; shape: text}

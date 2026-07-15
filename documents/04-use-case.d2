@@ -1,0 +1,155 @@
+# 11FTC Ticketing Management System — Use Case Diagram
+# Paste into https://play.d2lang.com/  |  Layout engine: elk
+#
+# Requirement traceability lives in 12-traceability-matrix.md, NOT in these labels.
+# A use case diagram is read by stakeholders; keep the ovals plain.
+
+direction: right
+
+title: |md
+  # Use Case Diagram
+| {near: top-center; shape: text; style.font-size: 26}
+
+employee: Employee {
+  shape: person
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+}
+
+staff: IT Staff {
+  shape: person
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+}
+
+admin: IT Administrator {
+  shape: person
+  style.fill: "#0b3d91"
+  style.font-color: "#ffffff"
+}
+
+sheets: "Google Sheets\n«external system»" {
+  shape: rectangle
+  style.fill: "#8b949e"
+  style.font-color: "#ffffff"
+}
+
+idp: "Google Workspace SSO\n«external system»" {
+  shape: rectangle
+  style.fill: "#8b949e"
+  style.font-color: "#ffffff"
+}
+
+sys: 11FTC Ticketing Management System {
+  style.stroke-dash: 3
+  style.fill: "#f6f8fa"
+
+  ticketing: Ticket Management {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+
+    encode: "Encode Ticket" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    gennum: "Generate Ticket Number" {shape: oval; style.fill: "#7aa9f7"}
+    resolve_emp: "Resolve or Create Employee" {shape: oval; style.fill: "#7aa9f7"}
+    update: "Update Ticket" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    assign: "Assign Ticket" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    close: "Close Ticket" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    ongoing: "Mark Ticket Ongoing" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    search: "Search and Filter Tickets" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    history: "View Ticket History" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    audit: "Write Audit Entry" {shape: oval; style.fill: "#7aa9f7"}
+    enqueue: "Enqueue Synchronization" {shape: oval; style.fill: "#7aa9f7"}
+  }
+
+  admin_uc: Administration {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+
+    manage_emp: "Manage Employees" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    manage_users: "Manage Users" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    manage_lookup: "Manage Lookups" {shape: oval; style.fill: "#d29922"}
+    config_sync: "Configure Synchronization" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+  }
+
+  reporting: Analytics and Synchronization {
+    style.fill: "transparent"
+    style.stroke-dash: 2
+
+    dashboard: "View Dashboard" {shape: oval; style.fill: "#d29922"}
+    report: "Generate Report" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    sync: "Synchronize to Sheet" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+    backfill: "Backfill History" {shape: oval; style.fill: "#1f6feb"; style.font-color: "#ffffff"}
+  }
+
+  auth: "Authenticate" {shape: oval; style.fill: "#7aa9f7"}
+}
+
+# --- actor associations ---
+employee -> staff: "reports IT concern" {style.stroke-dash: 3}
+
+staff -> sys.ticketing.encode
+staff -> sys.ticketing.update
+staff -> sys.ticketing.assign
+staff -> sys.ticketing.ongoing
+staff -> sys.ticketing.search
+staff -> sys.ticketing.history
+staff -> sys.ticketing.close
+staff -> sys.reporting.dashboard {style.stroke: "#d29922"; style.stroke-dash: 3}
+
+admin -> sys.ticketing.close
+admin -> sys.ticketing.ongoing
+admin -> sys.admin_uc.manage_emp
+admin -> sys.admin_uc.manage_users
+admin -> sys.admin_uc.manage_lookup
+admin -> sys.admin_uc.config_sync
+admin -> sys.reporting.dashboard
+admin -> sys.reporting.report
+admin -> sys.reporting.backfill
+
+sys.reporting.sync -> sheets: "writes rows"
+sys.reporting.backfill -> sheets: "writes history"
+sys.auth -> idp: "verifies credentials"
+
+# --- include / extend ---
+sys.ticketing.encode -> sys.ticketing.gennum: "«include»" {style.stroke-dash: 3}
+sys.ticketing.encode -> sys.ticketing.resolve_emp: "«include»" {style.stroke-dash: 3}
+sys.ticketing.encode -> sys.ticketing.audit: "«include»" {style.stroke-dash: 3}
+sys.ticketing.encode -> sys.ticketing.enqueue: "«include»" {style.stroke-dash: 3}
+sys.ticketing.update -> sys.ticketing.audit: "«include»" {style.stroke-dash: 3}
+sys.ticketing.update -> sys.ticketing.enqueue: "«include»" {style.stroke-dash: 3}
+sys.ticketing.assign -> sys.ticketing.audit: "«include»" {style.stroke-dash: 3}
+sys.ticketing.close -> sys.ticketing.audit: "«include»" {style.stroke-dash: 3}
+sys.ticketing.ongoing -> sys.ticketing.audit: "«include»" {style.stroke-dash: 3}
+sys.ticketing.enqueue -> sys.reporting.sync: "«trigger»" {style.stroke-dash: 3}
+sys.ticketing.resolve_emp -> sys.admin_uc.manage_emp: "«extend»" {style.stroke-dash: 3}
+
+sys.ticketing.encode -> sys.auth: "«include»" {style.stroke-dash: 3}
+sys.admin_uc.manage_users -> sys.auth: "«include»" {style.stroke-dash: 3}
+
+legend: |||md
+  **Legend**
+
+  | | Meaning |
+  |---|---|
+  | Dark blue oval | Confirmed use case |
+  | Light blue oval | Included use case — never invoked directly by an actor |
+  | **Amber oval** | **Awaiting a decision from the 11FTC IT team** |
+  | Dashed association | Proposed, not yet confirmed |
+
+  **Notes**
+
+  - **Employee is not a system actor.** They report a concern to a person; IT Staff
+    encodes it. No employee login exists. The dashed association to IT Staff is a
+    real-world interaction outside the system boundary.
+  - **Synchronize to Sheet has no human actor.** It is triggered by the system when a
+    ticket is written, never invoked by a user.
+  - **There is no *Void Ticket* and no *Resolve Ticket*.** The department has three
+    statuses — Open, Ongoing, Closed. Closing *is* resolving, and mis-encoded tickets
+    are corrected by *Update Ticket*, not voided.
+  - **Amber items:** *View Dashboard* is shown for IT Staff as a proposal;
+    *Manage Lookups* has no content until the IT team supplies the department and
+    issue-category lists.
+
+  Requirement IDs, SRS sections, and open-item references for every use case above
+  are in **`12-traceability-matrix.md`**.
+||| {near: bottom-center; shape: text}
