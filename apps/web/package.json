@@ -2,27 +2,29 @@
   "name": "@11ftc/web",
   "version": "0.0.0",
   "private": true,
-  "description": "11FTC Ticketing System — Next.js frontend",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "start": "next start -p 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"(no web tests yet)\" && exit 0"
   },
   "dependencies": {
-    "@11ftc/shared-types": "workspace:*",
-    "next": "^15.3.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "@11ftc/shared": "workspace:*",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@11ftc/tsconfig": "workspace:*",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "eslint": "^9.0.0",
-    "eslint-config-next": "^15.3.0",
-    "typescript": "^5.8.0"
+    "@types/node": "^20.19.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^9.9.0",
+    "eslint-config-next": "^16.2.10",
+    "postcss": "^8.4.40",
+    "tailwindcss": "^3.4.7",
+    "typescript": "^5.9.3"
   }
 }

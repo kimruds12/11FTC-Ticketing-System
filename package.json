@@ -1,36 +1,39 @@
 {
-  "name": "@11ftc/monorepo",
+  "name": "11ftc-ticketing",
   "version": "0.0.0",
   "private": true,
-  "description": "11FTC Ticketing Management System — pnpm workspace monorepo",
+  "description": "11FTC Ticketing Management System — modular monolith + sync worker",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9"
+  },
   "scripts": {
-    "dev": "pnpm -r --parallel run dev",
-    "dev:web": "pnpm --filter @11ftc/web dev",
-    "dev:api": "pnpm --filter @11ftc/api start:dev",
-    "dev:worker": "pnpm --filter @11ftc/sync-worker start:dev",
-    "build": "pnpm -r run build",
-    "build:web": "pnpm --filter @11ftc/web build",
-    "build:api": "pnpm --filter @11ftc/api build",
-    "lint": "pnpm -r run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
-    "test": "pnpm -r run test",
-    "test:e2e": "pnpm -r run test:e2e",
-    "db:generate": "pnpm --filter @11ftc/database generate",
-    "db:migrate": "pnpm --filter @11ftc/database migrate:dev",
-    "db:migrate:prod": "pnpm --filter @11ftc/database migrate:deploy",
-    "db:seed": "pnpm --filter @11ftc/database seed",
-    "db:studio": "pnpm --filter @11ftc/database studio",
-    "clean": "pnpm -r exec -- rm -rf node_modules dist .next .turbo",
-    "typecheck": "pnpm -r run typecheck"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:concurrency": "turbo run test:concurrency",
+    "sync:agents": "node scripts/sync-agents.mjs",
+    "check:agents": "node scripts/sync-agents.mjs --check",
+    "sync:skills": "node scripts/sync-skills.mjs",
+    "check:skills": "node scripts/sync-skills.mjs --check",
+    "check:no-delete": "node scripts/check-no-delete.mjs",
+    "check:traceability": "node scripts/check-traceability.mjs",
+    "db:generate": "pnpm --filter @11ftc/db db:generate",
+    "db:migrate": "pnpm --filter @11ftc/db db:migrate",
+    "docker:dev": "docker compose up",
+    "docker:dev:down": "docker compose down",
+    "docker:build": "docker compose -f docker-compose.prod.yml build",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up -d"
   },
   "devDependencies": {
-    "prettier": "^3.5.0",
-    "typescript": "^5.8.0"
-  },
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
-  },
-  "packageManager": "pnpm@9.15.9"
+    "@eslint/js": "^9.9.0",
+    "eslint": "^9.9.0",
+    "globals": "^15.9.0",
+    "turbo": "^2.10.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.64.0"
+  }
 }

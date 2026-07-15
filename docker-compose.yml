@@ -1,0 +1,77 @@
+# Local development stack.
+#
+# Per the team's decision, Postgres and Supabase Auth are REMOTE (managed Supabase) — this
+# compose does NOT run a local database. DATABASE_URL and SUPABASE_* come from your .env
+# and point at the Supabase project. Only Redis (BullMQ trigger bus, which Supabase does
+# not provide) runs locally; override REDIS_URL if you have a managed Redis instead.
+#
+# Services run from the node base image with the source bind-mounted and `pnpm dev`
+# (watch mode) for hot reload — no image rebuild on code change. First `up` runs
+# `pnpm install`, which populates the node_modules volumes (slower once, fast after).
+#
+#   cp .env.example .env   # fill in the remote Supabase values first
+#   docker compose up
+#
+# Windows note: bind-mounted node_modules can be slow; if iteration drags, run
+# `pnpm dev` on the host instead and use this compose only for Redis.
+
+x-node-dev: &node-dev
+  image: node:20-alpine
+  working_dir: /app
+  env_file: .env
+  environment:
+    REDIS_URL: redis://redis:6379
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *node-dev
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @11ftc/api dev"
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/app
+      - root_node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+
+  worker:
+    <<: *node-dev
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @11ftc/api dev:worker"
+    volumes:
+      - .:/app
+      - root_node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+
+  web:
+    <<: *node-dev
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @11ftc/web dev"
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - .:/app
+      - root_node_modules:/app/node_modules
+      - web_node_modules:/app/apps/web/node_modules
+      - web_next:/app/apps/web/.next
+
+volumes:
+  root_node_modules:
+  api_node_modules:
+  web_node_modules:
+  web_next:

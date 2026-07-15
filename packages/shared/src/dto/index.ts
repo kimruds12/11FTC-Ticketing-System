@@ -1,0 +1,3 @@
+// Barrel for shared request/response DTOs (Zod schemas + inferred types). Populated per
+// module (M1..M9) as they are built — see ./README.md. Empty for now (scaffold).
+export {};
