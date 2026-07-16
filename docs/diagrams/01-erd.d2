@@ -52,7 +52,7 @@ departments: Department {
 main_issues: MainIssueCategory {
   shape: sql_table
   main_issue_id: uuid {constraint: primary_key}
-  label: varchar UNIQUE
+  "label": varchar UNIQUE
   sort_order: int
   is_active: boolean
 }
