@@ -26,6 +26,8 @@ contributor or coding agent can read before re-litigating a settled question.
 | [0008](0008-analytics-no-cache-initially.md) | No cache / no materialized views for analytics initially | Accepted |
 | [0009](0009-vendored-multi-agent-skills.md) | Vendor engineering skills for five agents, canonical + mirrored | Accepted |
 | [0010](0010-toolchain-versions-typescript-5x.md) | Pin TypeScript to 5.x; adopt Next 16 / NestJS 11 / Drizzle 0.45 | Accepted |
+| [0011](0011-frontend-architecture-feature-slice-redux-axios.md) | Web architecture: feature-slice + hybrid Redux (client state) + Axios services + server actions | Accepted |
+| [0012](0012-api-and-module-versioning.md) | API versioning (URI `/api/v1`) + per-module semver registry, single-module bump | Accepted |
 
 Requirements/design alignment: each ADR links the FRs and diagrams it affects. The
 [traceability matrix](../12-traceability-matrix.md) links back here in its status column.

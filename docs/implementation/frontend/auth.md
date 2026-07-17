@@ -11,8 +11,10 @@
 ## Data / API
 
 - `src/lib/auth.ts` — Supabase client (anon key only), session helpers.
-- `src/lib/api.ts` — typed fetch wrapper that attaches `Authorization: Bearer <jwt>` to every
-  API call. The API verifies the JWT via JWKS; the browser does no verification.
+- `src/services/` — the Axios layer (`serverApi()` / `browserApi()`) attaches
+  `Authorization: Bearer <jwt>` to every API call via a request interceptor (see
+  [architecture.md](architecture.md)). The API verifies the JWT via JWKS; the browser does no
+  verification.
 - `GET /me` (M1) → `{ userId, role, fullName }` to populate the role in the app shell.
 
 ## RBAC in the UI

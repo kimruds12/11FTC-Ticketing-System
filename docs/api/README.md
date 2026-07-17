@@ -4,6 +4,10 @@ This directory holds the **HTTP contract** that the web app and the API agree on
 concrete alignment mechanism between frontend and backend: one source of truth, consumed by
 both, checked by types.
 
+> **Versioning:** every route is URI-versioned under `/api/v1` and each module carries a
+> semver — see [versioning.md](versioning.md) (ADR-0012). Paths below are shown without the
+> `/api/v1` prefix for brevity.
+
 ## How alignment is guaranteed (not just documented)
 
 ```
