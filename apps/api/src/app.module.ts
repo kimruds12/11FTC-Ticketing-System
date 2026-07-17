@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AppController } from "./app.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { MasterDataModule } from "./master-data/master-data.module.js";
 import { NumberingModule } from "./numbering/numbering.module.js";
@@ -26,5 +27,6 @@ import { AnalyticsModule } from "./analytics/analytics.module.js";
     OutboxModule, // M7
     AnalyticsModule, // M9
   ],
+  controllers: [AppController], // version-neutral /api/health and /api/version
 })
 export class AppModule {}

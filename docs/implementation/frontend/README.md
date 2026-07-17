@@ -28,9 +28,14 @@ tested that way. If you're encoding domain logic here, it belongs in `apps/api`.
   schema the API validates against (`docs/api/README.md`).
 - **Auth:** Supabase Auth with the **anon key only**; attach the session JWT as
   `Authorization: Bearer` on every API call (the API verifies via JWKS). See `auth.md`.
+- **Architecture:** the folder/layer structure, state model, and data-flow patterns are
+  defined once in [architecture.md](architecture.md) (ADR-0011). Read it before building any
+  screen — it says *where* every piece below lives.
 - **Data fetching:** Server Components for reads (queue, detail, dashboard) using the user's
-  session; Client Components for interactive forms/comboboxes. Plain `fetch` + a typed
-  wrapper (`src/lib/api.ts`) until a data lib earns its place — this is a small internal tool.
+  session; Client Components for interactive forms/comboboxes. HTTP goes through the **Axios
+  services** in `src/services/` (never `fetch` scattered in components); mutations go through
+  **Server Actions** that call those services. Client-only cross-cutting state
+  (session/role, UI, filters) lives in **Redux Toolkit** — never server data.
 - **RBAC:** hide admin-only UI by role, but treat it as **cosmetic** — the API's `RolesGuard`
   is the real gate.
 - **States:** every data view has explicit loading / empty / error states.
