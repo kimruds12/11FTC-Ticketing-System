@@ -117,10 +117,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Stat Cards (Restored values as requested) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── Stat Cards — matching IT Staff KPIs + Active Users (Overall) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
-          title="Active Users (Technicians)"
+          title="Active Users (Overall)"
           value="4"
           badge="All Online"
           badgeColor="bg-green-50 text-green-700 border border-green-200"
@@ -134,13 +134,27 @@ export default function AdminDashboard() {
         />
 
         <StatCard
-          title="Google Sheets Sync Status"
-          value="100%"
-          badge="Synced"
-          badgeColor="bg-green-50 text-green-700 border border-green-200"
-          iconBg="bg-green-50"
+          title="Tickets Created Today"
+          value="14"
+          badge="General Activity"
+          badgeColor="bg-blue-50 text-blue-700 border border-blue-200"
+          iconBg="bg-red-50"
           icon={
-            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+            </svg>
+          }
+        />
+
+        <StatCard
+          title="Resolved Today"
+          value="8"
+          badge="Support Ops"
+          badgeColor="bg-teal-50 text-teal-700 border border-teal-200"
+          iconBg="bg-teal-50"
+          icon={
+            <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -148,29 +162,29 @@ export default function AdminDashboard() {
         />
 
         <StatCard
-          title="BullMQ Job Backlog"
-          value="0"
-          badge="Empty Queue"
-          badgeColor="bg-gray-100 text-gray-700 border border-gray-200"
-          iconBg="bg-gray-50"
+          title="Total Ongoing"
+          value="18"
+          badge="Active Queue"
+          badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
+          iconBg="bg-amber-50"
           icon={
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }
         />
 
         <StatCard
-          title="First-Time Fix Rate"
-          value="92%"
-          badge="High Efficiency"
-          badgeColor="bg-primary-50 text-primary-700 border border-primary-200"
-          iconBg="bg-primary-50"
+          title="Assigned Tasks"
+          value="5 / 6"
+          badge="1 Pending"
+          badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
+          iconBg="bg-green-50"
           icon={
-            <svg className="w-5 h-5 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M13 10V3L4 14h7v7l9-11h-7z" />
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
           }
         />
