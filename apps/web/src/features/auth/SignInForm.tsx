@@ -51,10 +51,10 @@ export default function SignInForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {/* Email */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+        <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
           Email Address
         </label>
         <input
@@ -62,7 +62,7 @@ export default function SignInForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="admin@gmail.com"
-          className="input"
+          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all duration-150 shadow-sm font-sans"
           autoComplete="email"
           required
         />
@@ -70,7 +70,7 @@ export default function SignInForm() {
 
       {/* Password */}
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+        <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
           Password
         </label>
         <div className="relative">
@@ -79,14 +79,14 @@ export default function SignInForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
-            className="input pr-10"
+            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all duration-150 shadow-sm font-sans pr-12"
             autoComplete="current-password"
             required
           />
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
           >
             {showPassword ? (
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,25 +106,25 @@ export default function SignInForm() {
       </div>
 
       {/* Remember + Forgot */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between text-xs">
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={remember}
             onChange={(e) => setRemember(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-primary-700 focus:ring-primary-700"
+            className="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary-600 focus:ring-primary-500/30"
           />
-          <span className="text-sm text-gray-600">Remember me</span>
+          <span className="text-white/80 font-medium font-sans">Remember me</span>
         </label>
-        <a href="#" className="text-sm text-primary-700 font-medium hover:underline">
+        <a href="#" className="text-white/90 font-semibold hover:text-white hover:underline font-sans">
           Forgot password?
         </a>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <div className="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-200 font-medium font-sans">
+          <svg className="w-4 h-4 flex-shrink-0 text-red-400" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd"
               d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
               clipRule="evenodd" />
@@ -137,13 +137,11 @@ export default function SignInForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-2.5 bg-primary-700 text-white font-semibold rounded-lg
-          hover:bg-primary-800 active:bg-primary-900 transition-colors
-          disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+        className="w-full py-3 bg-primary-700 hover:bg-primary-600 active:bg-primary-800 text-white font-bold rounded-xl transition-all duration-200 tracking-wider shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm uppercase font-sans"
       >
         {loading ? (
           <>
-            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />

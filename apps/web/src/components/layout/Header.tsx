@@ -89,6 +89,32 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   const [showProfileModal, setShowProfileModal] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  const userId = useAppSelector((state) => state.auth.userId);
+
+  // Profile settings local state fields
+  const [modalFullName, setModalFullName] = useState(fullName || "");
+  const [modalUsername, setModalUsername] = useState("");
+  const [modalEmail, setModalEmail] = useState("");
+  const [modalPassword, setModalPassword] = useState("");
+  const [modalConfirmPassword, setModalConfirmPassword] = useState("");
+
+  useEffect(() => {
+    if (showProfileModal) {
+      setModalFullName(fullName || "");
+      setModalUsername(role === UserRole.IT_ADMINISTRATOR ? "admin" : "staff");
+      setModalEmail(role === UserRole.IT_ADMINISTRATOR ? "admin@gmail.com" : "staff@gmail.com");
+      setModalPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
+      setModalConfirmPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
+    }
+  }, [showProfileModal, fullName, role]);
+
+  const handleSaveProfile = () => {
+    if (userId && role) {
+      dispatch(setSession({ userId, role, fullName: modalFullName }));
+    }
+    setShowProfileModal(false);
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
@@ -114,90 +140,19 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Mock Notifications data for Activity and Tickets tabs
-  const recentActivities = [
-    {
-      id: "act-1",
-      title: "Patron Check-Out",
-      desc: "Patron Kim Ruds Cabudbud Guston left Alumni Area",
-      time: "6 DAYS AGO",
-      tag: "QR SCAN",
-      icon: (
-        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7" />
-        </svg>
-      ),
-    },
-    {
-      id: "act-2",
-      title: "Create Calendar Event",
-      desc: "Created new event \"ads\" on Jul 14, 2026",
-      time: "6 DAYS AGO",
-      tag: "CALENDAR",
-      icon: (
-        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-      ),
-    },
-    {
-      id: "act-3",
-      title: "CHECKED_IN",
-      desc: "Assigned locker 10 in Alumni Area at PLV CEIT to Kim Ruds Guston",
-      time: "6 DAYS AGO",
-      tag: "BAGGAGE MODULE",
-      icon: (
-        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-      ),
-    },
-    {
-      id: "act-4",
-      title: "CHECKED_IN",
-      desc: "Locker 10 status changed from available to occupied",
-      time: "6 DAYS AGO",
-      tag: "SYSTEM",
-      icon: (
-        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-      ),
-    },
-  ];
-
-  const recentTickets = [
-    {
-      id: "TKT-8902",
-      title: "Server Outage - Main DB",
-      desc: "Reported by Engineering Dept. Urgent database restart needed.",
-      time: "15m AGO",
-      status: "OPEN",
-    },
-    {
-      id: "TKT-8901",
-      title: "Email Gateway Latency",
-      desc: "Users experiencing delays in sending emails with attachments.",
-      time: "42m AGO",
-      status: "ONGOING",
-    },
-    {
-      id: "TKT-8842",
-      title: "VPN Connection Failing",
-      desc: "Intermittent connection drop reported post Windows updates.",
-      time: "2h AGO",
-      status: "CLOSED",
-    },
-  ];
+  // Mock Notifications data for Activity and Tickets tabs (cleared/empty per instructions)
+  const recentActivities: any[] = [];
+  const recentTickets: any[] = [];
 
   /* ── Sidebar offset calculation ──────────────────── */
   const sidebarWidth = isSidebarCollapsed ? "72px" : "240px";
 
   return (
-    <header
-      className="fixed top-0 right-0 h-16 bg-white/95 backdrop-blur-sm border-b border-gray-100 flex items-center justify-between px-4 md:px-6 z-header main-transition"
-      style={{ left: `var(--sidebar-width, ${sidebarWidth})`, boxShadow: "0 1px 2px 0 rgba(0,0,0,0.03)" }}
-    >
+    <>
+      <header
+        className="fixed top-0 right-0 h-16 bg-white/95 backdrop-blur-sm border-b border-gray-100 flex items-center justify-between px-4 md:px-6 z-header main-transition"
+        style={{ left: `var(--sidebar-width, ${sidebarWidth})`, boxShadow: "0 1px 2px 0 rgba(0,0,0,0.03)" }}
+      >
       {/* ── Left Section ────────────────────────────── */}
       <div className="flex items-center gap-3 min-w-0">
         {/* Hamburger (mobile/tablet) */}
@@ -439,13 +394,6 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
                   </svg>
                   Profile
                 </button>
-                <button className="dropdown-item w-full text-left" role="menuitem" onClick={() => { setShowProfileModal(true); setShowProfileDropdown(false); }}>
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                      d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Account
-                </button>
               </div>
 
               <div className="dropdown-divider" />
@@ -465,142 +413,177 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
           )}
         </div>
       </div>
+    </header>
 
-      {/* Profile Settings Modal Overlay */}
+      {/* ── Profile Settings Modal ────────────────────────────────────────── */}
       {showProfileModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl p-6 md:p-8 w-full max-w-md relative animate-scale-in">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded bg-primary-50 flex items-center justify-center text-primary-700">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+        <>
+          {/* Backdrop — dark overlay behind the modal, clicking it closes */}
+          <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[9998] transition-opacity"
+            onClick={() => setShowProfileModal(false)}
+            aria-hidden="true"
+          />
+
+          {/* Modal container — always centered on screen */}
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none">
+            <div
+              className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-md pointer-events-auto animate-scale-in overflow-hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="profile-modal-title"
+            >
+              {/* ── Header ────────────────────────────────────── */}
+              <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary-50 flex items-center justify-center text-primary-700">
+                    <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 id="profile-modal-title" className="text-base font-bold text-gray-900">
+                      Profile Settings
+                    </h2>
+                    <p className="text-[10px] text-gray-400 font-medium mt-0.5 uppercase tracking-wider">
+                      {role === UserRole.IT_ADMINISTRATOR ? "Administrator Account" : "IT Staff Account — View Only"}
+                    </p>
+                  </div>
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">Profile Settings</h2>
-              </div>
-              <button
-                onClick={() => setShowProfileModal(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Profile Avatar and Change Picture */}
-            <div className="flex flex-col items-center gap-2 mb-6">
-              <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xl font-bold border border-primary-200 shadow-sm">
-                {fullName ? fullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "IT"}
-              </div>
-              {role === UserRole.IT_ADMINISTRATOR ? (
-                <button className="text-[10px] font-bold text-primary-700 hover:text-primary-800 uppercase tracking-wider">
-                  Change Picture
-                </button>
-              ) : (
-                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
-                  IT Support Team Member
-                </span>
-              )}
-            </div>
-
-            {/* Fields form */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  disabled={role !== UserRole.IT_ADMINISTRATOR}
-                  defaultValue={fullName || ""}
-                  className="input w-full disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed font-semibold text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  disabled={role !== UserRole.IT_ADMINISTRATOR}
-                  defaultValue={role === UserRole.IT_ADMINISTRATOR ? "admin" : "staff"}
-                  className="input w-full disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed font-semibold text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  disabled={role !== UserRole.IT_ADMINISTRATOR}
-                  defaultValue={role === UserRole.IT_ADMINISTRATOR ? "admin@gmail.com" : "staff@gmail.com"}
-                  className="input w-full disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed font-semibold text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  New Password
-                </label>
-                <input
-                  type="password"
-                  disabled={role !== UserRole.IT_ADMINISTRATOR}
-                  defaultValue={role === UserRole.IT_ADMINISTRATOR ? "admin123" : "••••••••"}
-                  className="input w-full disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed font-semibold text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  disabled={role !== UserRole.IT_ADMINISTRATOR}
-                  defaultValue={role === UserRole.IT_ADMINISTRATOR ? "admin123" : "••••••••"}
-                  className="input w-full disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed font-semibold text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Warning note for Staff */}
-            {role !== UserRole.IT_STAFF && role !== UserRole.IT_ADMINISTRATOR && (
-              <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-4 font-semibold text-center">
-                Read-only: Only IT Admin can configure account details.
-              </p>
-            )}
-            {role === UserRole.IT_STAFF && (
-              <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-4 font-semibold text-center">
-                Read-only: Only IT Admin can configure account details.
-              </p>
-            )}
-
-            {/* Actions footer */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100 mt-6">
-              <button
-                onClick={() => setShowProfileModal(false)}
-                className="btn-outline font-bold text-xs py-2 px-4 bg-white text-gray-500"
-              >
-                {role === UserRole.IT_ADMINISTRATOR ? "Cancel" : "Close"}
-              </button>
-              {role === UserRole.IT_ADMINISTRATOR && (
                 <button
                   onClick={() => setShowProfileModal(false)}
-                  className="btn-primary font-bold text-xs py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                  aria-label="Close profile settings"
                 >
-                  Save Details
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
-              )}
+              </div>
+
+              {/* ── Body ──────────────────────────────────────── */}
+              <div className="px-6 py-5 max-h-[calc(100vh-220px)] overflow-y-auto">
+                {/* Avatar section */}
+                <div className="flex flex-col items-center gap-2 mb-6">
+                  <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xl font-bold border-2 border-primary-200 shadow-sm">
+                    {modalFullName ? modalFullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "IT"}
+                  </div>
+                  {role === UserRole.IT_ADMINISTRATOR && (
+                    <button className="text-[10px] font-bold text-primary-700 hover:text-primary-800 uppercase tracking-wider transition-colors">
+                      Change Picture
+                    </button>
+                  )}
+                  {role === UserRole.IT_STAFF && (
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                      IT Support Team Member
+                    </span>
+                  )}
+                </div>
+
+                {/* Fields */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={modalFullName}
+                      onChange={(e) => setModalFullName(e.target.value)}
+                      disabled={role === UserRole.IT_STAFF}
+                      className="input w-full font-semibold text-sm disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={modalUsername}
+                      onChange={(e) => setModalUsername(e.target.value)}
+                      disabled={role === UserRole.IT_STAFF}
+                      className="input w-full font-semibold text-sm disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={modalEmail}
+                      onChange={(e) => setModalEmail(e.target.value)}
+                      disabled={role === UserRole.IT_STAFF}
+                      className="input w-full font-semibold text-sm disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  {role === UserRole.IT_ADMINISTRATOR && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                          New Password
+                        </label>
+                        <input
+                          type="password"
+                          value={modalPassword}
+                          onChange={(e) => setModalPassword(e.target.value)}
+                          className="input w-full font-semibold text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                          Confirm Password
+                        </label>
+                        <input
+                          type="password"
+                          value={modalConfirmPassword}
+                          onChange={(e) => setModalConfirmPassword(e.target.value)}
+                          className="input w-full font-semibold text-sm"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Staff info banner */}
+                {role === UserRole.IT_STAFF && (
+                  <div className="flex items-center gap-2 mt-5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                    <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <p className="text-[11px] text-amber-700 font-semibold">
+                      Profile details are read-only. Contact your IT Administrator to update account settings.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Footer ────────────────────────────────────── */}
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  className="btn-outline font-bold text-xs py-2 px-4 bg-white text-gray-500"
+                >
+                  {role === UserRole.IT_ADMINISTRATOR ? "Cancel" : "Close"}
+                </button>
+                {role === UserRole.IT_ADMINISTRATOR && (
+                  <button
+                    onClick={handleSaveProfile}
+                    className="btn-primary font-bold text-xs py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
+                  >
+                    Save Details
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
-    </header>
+    </>
   );
 }

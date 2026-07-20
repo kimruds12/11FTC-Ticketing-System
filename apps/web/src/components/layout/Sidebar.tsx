@@ -164,21 +164,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
           })}
       </nav>
 
-      {/* ── User Profile at Bottom (Role info & Logout removed per instruction) ── */}
-      <div className="border-t border-gray-100 p-3">
-        <div className={`flex items-center rounded-lg p-2 ${isCollapsed ? "justify-center" : "gap-3 bg-gray-50"}`}>
-          <div className="w-8 h-8 rounded-full bg-primary-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-primary-100">
-            {fullName ? fullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "IT"}
-          </div>
-          {!isCollapsed && (
-            <div className="overflow-hidden">
-              <div className="text-sm font-semibold text-gray-900 truncate leading-tight">
-                {fullName || (role === UserRole.IT_ADMINISTRATOR ? "Admin User" : "IT Staff")}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+
     </aside>
   );
 }
