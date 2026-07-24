@@ -51,7 +51,7 @@ export default function SignInPage() {
       </div>
 
       {/* ── Curved Sign-In Card (Right Side / Centered on Mobile) ── */}
-      <div className="relative z-10 w-full max-w-[430px] bg-white/15 backdrop-blur-xl rounded-[2.5rem] shadow-[0_25px_50px_rgba(0,0,0,0.25)] p-8 sm:p-10 border border-white/20 flex flex-col">
+      <div className="relative z-10 w-full max-w-[430px] bg-slate-950/40 backdrop-blur-xl rounded-[2.5rem] shadow-[0_25px_60px_rgba(0,0,0,0.35)] p-8 sm:p-10 border border-white/10 flex flex-col">
         {/* Mobile Logo Header */}
         <div className="flex items-center gap-3 mb-8 lg:hidden">
           <div className="relative w-9 h-9 bg-white/10 p-1.5 rounded-xl border border-white/10">
