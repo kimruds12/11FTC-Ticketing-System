@@ -1,11 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "comment": "Inherits module/moduleResolution NodeNext (ESM) from the base — matches the .js-extension import style the source already uses, and lets ESM-only deps (jose) resolve via their exports map. See ADR-0014.",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "Node",
     "rootDir": "src",
     "outDir": "dist",
-    "baseUrl": ".",
     "declaration": false,
     "declarationMap": false
   },
