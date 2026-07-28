@@ -1,32 +1,112 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { inArray } from "drizzle-orm";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import type { Pool } from "pg";
+import { createDb, schema, type Db } from "@11ftc/db";
+import { NumberingService } from "./numbering.service.js";
 
 /**
- * THE test that is the specification for M3 (System Design §3.2, module spec M3).
+ * THE spec for M3 (System Design §3.2). Fire many simultaneous encodes against ONE date and
+ * prove every allocated number is distinct — the bug this module prevents is invisible in
+ * every manual test and only shows up under real contention, so this runs against a REAL
+ * Postgres (a mock cannot prove atomicity under a row lock).
  *
- * Fire 50 simultaneous encodes against ONE date and assert 50 DISTINCT ticket numbers.
- * This is why the numbering module exists; it fails in production the first busy morning
- * and passes every manual test. Write it before writing M3 — the test is the spec, not a
- * check on it.
- *
- * STUB: fails loudly until M3 exists. Do NOT make it pass by weakening it. Replace the
- * body with the real thing:
- *
- *   1. spin up NumberingService against a real Postgres (session pooler)
- *   2. Promise.all of 50 encodes, each opening its own transaction, same date
- *   3. collect the 50 sequence_numbers
- *   4. expect(new Set(numbers).size).toBe(50)
- *
- * Also cover (module spec M3): backdating uses that date's scope; a forced rollback after
- * allocation skips a number without duplicating; flipping date↔year scope formats
- * correctly.
+ * Isolated to a far-future test scope we clean up. `ticket_sequence` is NOT `tickets` or
+ * `audit_log`, so DELETE here does not touch the no-delete rule.
  */
-describe("M3 ticket numbering — 50 concurrent encodes, one date", () => {
-  it.todo("allocates 50 distinct sequence numbers under contention");
+process.loadEnvFile?.(
+  resolve(dirname(fileURLToPath(import.meta.url)), "../../../..", ".env"),
+);
 
-  it("is not yet implemented — this gate must stay RED until M3 lands", () => {
-    // Intentional failure so CI's test:concurrency step is loud, not silently green.
-    expect.fail(
-      "M3 not implemented. Implement NumberingService and replace this stub with the real 50-way concurrency test.",
+const TEST_DATE = new Date("2099-01-15T00:00:00Z");
+const TEST_SCOPE_KEYS = ["2099", "2099-01-15"];
+const CONCURRENCY = 50;
+
+let db: Db;
+let pool: Pool;
+
+async function cleanScopes(): Promise<void> {
+  await db
+    .delete(schema.ticketSequence)
+    .where(inArray(schema.ticketSequence.scopeKey, TEST_SCOPE_KEYS));
+}
+
+beforeAll(async () => {
+  const conn = createDb(process.env.DATABASE_URL);
+  db = conn.db;
+  pool = conn.pool;
+  await cleanScopes();
+});
+
+afterAll(async () => {
+  if (db) await cleanScopes();
+  if (pool) await pool.end();
+});
+
+describe("M3 ticket numbering", () => {
+  it(`${CONCURRENCY} concurrent encodes, one date → ${CONCURRENCY} distinct numbers`, async () => {
+    const numbering = new NumberingService("year");
+
+    const results = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        db.transaction((tx) => numbering.next(TEST_DATE, tx)),
+      ),
     );
+
+    const numbers = results.map((r) => r.sequenceNumber);
+    // The guarantee: no two encodes get the same number.
+    expect(new Set(numbers).size).toBe(CONCURRENCY);
+    // From a clean scope the counter is contiguous 1..N.
+    expect([...numbers].sort((a, b) => a - b)).toEqual(
+      Array.from({ length: CONCURRENCY }, (_, i) => i + 1),
+    );
+    // All derive their scope from the ENCODED date, not today.
+    expect(results.every((r) => r.sequenceScope === "2099")).toBe(true);
+  });
+
+  it("backdating uses the encoded date's scope, not today's", async () => {
+    await cleanScopes();
+    const numbering = new NumberingService("year");
+    const r = await db.transaction((tx) => numbering.next(TEST_DATE, tx));
+    expect(r.sequenceScope).toBe("2099");
+    expect(r.ticketNo).toBe("IT-2099-0001");
+  });
+
+  it("a forced rollback consumes no number and never duplicates", async () => {
+    await cleanScopes();
+    const numbering = new NumberingService("year");
+
+    const a = await db.transaction((tx) => numbering.next(TEST_DATE, tx)); // committed
+
+    await expect(
+      db.transaction(async (tx) => {
+        await numbering.next(TEST_DATE, tx); // allocated, then abandoned
+        throw new Error("forced rollback");
+      }),
+    ).rejects.toThrow("forced rollback");
+
+    const c = await db.transaction((tx) => numbering.next(TEST_DATE, tx)); // committed
+
+    expect(a.sequenceNumber).toBe(1);
+    // The rolled-back allocation is undone — its number is reused, never duplicated.
+    expect(c.sequenceNumber).toBe(2);
+    expect(c.sequenceNumber).not.toBe(a.sequenceNumber);
+  });
+
+  it("formats date- and year-scoped numbers correctly", async () => {
+    await cleanScopes();
+    const dateScoped = await db.transaction((tx) =>
+      new NumberingService("date").next(TEST_DATE, tx),
+    );
+    expect(dateScoped.sequenceScope).toBe("2099-01-15");
+    expect(dateScoped.ticketNo).toBe("IT-2099-0115-001");
+
+    await cleanScopes();
+    const yearScoped = await db.transaction((tx) =>
+      new NumberingService("year").next(TEST_DATE, tx),
+    );
+    expect(yearScoped.sequenceScope).toBe("2099");
+    expect(yearScoped.ticketNo).toBe("IT-2099-0001");
   });
 });

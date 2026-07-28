@@ -30,6 +30,9 @@ export const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_JWKS_URL: z.string().url(),
 
+  // Ticket-number scope (M3 / OPEN-1). 'year' → IT-2026-0174; 'date' → IT-2026-0715-001.
+  TICKET_NUMBER_SCOPE: z.enum(["date", "year"]).default("year"),
+
   API_PORT: z.coerce.number().int().positive().default(3001),
 });
 

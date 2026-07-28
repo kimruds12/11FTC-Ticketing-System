@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 export interface User {
   id: string;
   name: string;
@@ -15,23 +13,10 @@ export interface User {
 
 interface UserTableProps {
   users: User[];
+  onToggleActive?: (userId: string, nextActive: boolean) => void | Promise<void>;
 }
 
-export default function UserTable({ users }: UserTableProps) {
-  const [userStates, setUserStates] = useState<Record<string, boolean>>(
-    users.reduce((acc, user) => ({
-      ...acc,
-      [user.id]: user.status === "Active"
-    }), {})
-  );
-
-  const handleToggle = (userId: string) => {
-    setUserStates(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
-  };
-
+export default function UserTable({ users, onToggleActive }: UserTableProps) {
   return (
     <div className="w-full overflow-hidden bg-white rounded-xl border border-gray-200 shadow-card">
       <div className="overflow-x-auto">
@@ -58,7 +43,7 @@ export default function UserTable({ users }: UserTableProps) {
           <tbody className="divide-y divide-gray-100">
             {users.length > 0 ? (
               users.map((user) => {
-                const isActive = userStates[user.id] ?? false;
+                const isActive = user.status === "Active";
                 return (
                   <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                     {/* Name (Avatar + Full name + email) */}
@@ -119,12 +104,13 @@ export default function UserTable({ users }: UserTableProps) {
                       <div className="flex items-center justify-center gap-4">
                         {/* Toggle Switch */}
                         <button
-                          onClick={() => handleToggle(user.id)}
+                          onClick={() => onToggleActive?.(user.id, !isActive)}
                           className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
                             isActive ? "bg-green-500" : "bg-gray-200"
                           }`}
                           role="switch"
                           aria-checked={isActive}
+                          title={isActive ? "Deactivate user" : "Activate user"}
                         >
                           <span
                             aria-hidden="true"
@@ -145,16 +131,8 @@ export default function UserTable({ users }: UserTableProps) {
                           </svg>
                         </button>
 
-                        {/* Delete Icon */}
-                        <button
-                          className="text-gray-400 hover:text-red-600 transition-colors"
-                          title="Delete user"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {/* No delete — the system never deletes a user (FR-9). Deactivate
+                            with the toggle instead; the account keeps resolving on tickets. */}
                       </div>
                     </td>
                   </tr>

@@ -13,11 +13,15 @@ import TopIssuesChart from "./TopIssuesChart";
  * Focuses on tickets management, ongoing queues, and fast encoding actions.
  */
 export default function StaffDashboard() {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // null until mount: a live clock rendered during SSR would not match the client's time on
+  // hydration. Starting from null keeps server output and first client render identical.
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [periodFilter, setPeriodFilter] = useState("overall");
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids SSR/client time mismatch
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -29,18 +33,22 @@ export default function StaffDashboard() {
     }, 800);
   };
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "";
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      })
+    : "";
 
   return (
     <div className="space-y-6 w-full px-4 md:px-8 py-6">
