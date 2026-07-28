@@ -7,4 +7,5 @@
  */
 
 export * from "./enums.js";
+export * from "./normalize.js";
 export * from "./dto/index.js";

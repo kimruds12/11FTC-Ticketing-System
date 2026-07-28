@@ -8,6 +8,8 @@
 //   import { browserApi } from "@/services/browser";  // client thunks/hooks
 export { AppError } from "./errors";
 export { authService, type AuthService } from "./auth.service";
+export { usersService, type UsersService } from "./users.service";
+export { lookupsService, type LookupsService } from "./lookups.service";
 export { ticketsService, type TicketsService } from "./tickets.service";
 export { employeesService, type EmployeesService } from "./employees.service";
 export { dashboardService, type DashboardService } from "./dashboard.service";
