@@ -17,12 +17,6 @@ interface UserTableProps {
   users: User[];
 }
 
-const statusDotColor: Record<User["status"], string> = {
-  Active: "bg-green-600",
-  Offline: "bg-gray-400",
-  Locked: "bg-red-600",
-};
-
 export default function UserTable({ users }: UserTableProps) {
   const [userStates, setUserStates] = useState<Record<string, boolean>>(
     users.reduce((acc, user) => ({

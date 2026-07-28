@@ -13,7 +13,6 @@ import { WorkerModule } from "./sync/worker.module.js";
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(WorkerModule);
   await app.init();
-  // eslint-disable-next-line no-console
   console.log("[worker] started — draining sync outbox");
 }
 

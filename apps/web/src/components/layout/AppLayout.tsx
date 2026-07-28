@@ -12,7 +12,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   /* ── Persist collapsed state ──────────────────────── */
   useEffect(() => {
+    // Restore on mount from localStorage, which is unavailable during SSR. Reading it in a
+    // lazy useState initializer instead would desync server/client markup (hydration
+    // mismatch); setting state post-mount is the SSR-safe idiom here.
     const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe restore-on-mount
     if (saved === "true") setIsCollapsed(true);
   }, []);
 

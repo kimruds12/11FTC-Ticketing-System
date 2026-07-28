@@ -14,7 +14,6 @@ interface SidebarProps {
 export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.auth.role);
-  const fullName = useAppSelector((state) => state.auth.fullName);
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard";

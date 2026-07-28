@@ -6,5 +6,5 @@
  * Keep this package free of runtime dependencies beyond `zod`. No NestJS, no Next.js.
  */
 
-export * from "./enums";
-export * from "./dto";
+export * from "./enums.js";
+export * from "./dto/index.js";

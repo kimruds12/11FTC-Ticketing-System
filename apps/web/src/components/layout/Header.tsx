@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { UserRole } from "@11ftc/shared";
@@ -47,6 +47,23 @@ const routeMeta: Record<string, { breadcrumb: string[]; title: string; subtitle?
   },
 };
 
+interface ActivityNotification {
+  id: string;
+  icon: ReactNode;
+  title: string;
+  desc: string;
+  time: string;
+  tag: string;
+}
+
+interface TicketNotification {
+  id: string;
+  title: string;
+  status: "OPEN" | "ONGOING" | "CLOSED";
+  desc: string;
+  time: string;
+}
+
 interface HeaderProps {
   onMenuToggle?: () => void;
   isSidebarCollapsed?: boolean;
@@ -63,26 +80,35 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   const meta = routeMeta[pathname] ?? { breadcrumb: ["11FTC"], title: "FTraCe" };
 
   /* ── Real-time clock (all pages) ─────────────────── */
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // null until mount: a live clock rendered during SSR would not match the client's time on
+  // hydration (the reported mismatch). Starting from null keeps the server output and the
+  // first client render identical; the effect then starts ticking.
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids SSR/client time mismatch
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "";
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      })
+    : "";
 
   /* ── Profile dropdown ────────────────────────────── */
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -98,15 +124,17 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   const [modalPassword, setModalPassword] = useState("");
   const [modalConfirmPassword, setModalConfirmPassword] = useState("");
 
-  useEffect(() => {
-    if (showProfileModal) {
-      setModalFullName(fullName || "");
-      setModalUsername(role === UserRole.IT_ADMINISTRATOR ? "admin" : "staff");
-      setModalEmail(role === UserRole.IT_ADMINISTRATOR ? "admin@gmail.com" : "staff@gmail.com");
-      setModalPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
-      setModalConfirmPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
-    }
-  }, [showProfileModal, fullName, role]);
+  // Seed the modal fields from the current identity when it opens. Done in the open handler
+  // (an event) rather than an effect — resetting React state inside an effect triggers the
+  // cascading-render the react-hooks lint rule warns about.
+  const openProfileModal = () => {
+    setModalFullName(fullName || "");
+    setModalUsername(role === UserRole.IT_ADMINISTRATOR ? "admin" : "staff");
+    setModalEmail(role === UserRole.IT_ADMINISTRATOR ? "admin@gmail.com" : "staff@gmail.com");
+    setModalPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
+    setModalConfirmPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
+    setShowProfileModal(true);
+  };
 
   const handleSaveProfile = () => {
     if (userId && role) {
@@ -141,8 +169,8 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   }, []);
 
   // Mock Notifications data for Activity and Tickets tabs (cleared/empty per instructions)
-  const recentActivities: any[] = [];
-  const recentTickets: any[] = [];
+  const recentActivities: ActivityNotification[] = [];
+  const recentTickets: TicketNotification[] = [];
 
   /* ── Sidebar offset calculation ──────────────────── */
   const sidebarWidth = isSidebarCollapsed ? "72px" : "240px";
@@ -271,7 +299,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
               <div className="flex-1 overflow-y-auto divide-y divide-gray-100 flex flex-col justify-center min-h-[160px]">
                 {activeNotifTab === "activity" ? (
                   recentActivities.length > 0 ? (
-                    recentActivities.map((act: any) => (
+                    recentActivities.map((act) => (
                       <div key={act.id} className="p-4 hover:bg-gray-50/50 transition-colors flex gap-3 items-start cursor-pointer">
                         <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0 border border-gray-100">
                           {act.icon}
@@ -298,7 +326,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
                   )
                 ) : (
                   recentTickets.length > 0 ? (
-                    recentTickets.map((tkt: any) => (
+                    recentTickets.map((tkt) => (
                       <div key={tkt.id} className="p-4 hover:bg-gray-50/50 transition-colors flex gap-3 items-start cursor-pointer" onClick={() => { router.push(`/tickets/${tkt.id}`); setShowNotificationDropdown(false); }}>
                         <div className="w-8 h-8 rounded-lg bg-red-50 text-primary-700 flex items-center justify-center flex-shrink-0 border border-red-100 font-bold text-xs">
                           T
@@ -387,7 +415,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
 
               {/* Menu Items */}
               <div className="py-1">
-                <button className="dropdown-item w-full text-left" role="menuitem" onClick={() => { setShowProfileModal(true); setShowProfileDropdown(false); }}>
+                <button className="dropdown-item w-full text-left" role="menuitem" onClick={() => { openProfileModal(); setShowProfileDropdown(false); }}>
                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                       d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />

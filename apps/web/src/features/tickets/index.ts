@@ -11,5 +11,5 @@ export {
   setPage,
   resetFilters,
   ticketFiltersReducer,
-} from "./store/ticketFiltersSlice.js";
-export type { StatusFilter, TicketFiltersState } from "./store/ticketFiltersSlice.js";
+} from "./store/ticketFiltersSlice";
+export type { StatusFilter, TicketFiltersState } from "./store/ticketFiltersSlice";

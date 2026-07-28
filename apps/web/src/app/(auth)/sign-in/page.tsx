@@ -1,13 +1,25 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import SignInForm from "@/features/auth/SignInForm";
+import { SignInButton } from "@/features/auth/components/SignInButton";
 
 export const metadata: Metadata = {
   title: "Sign In — FTraCe",
-  description: "Sign in to manage IT service tickets and oversee infrastructure operations.",
+  description:
+    "Sign in to manage IT service tickets and oversee infrastructure operations.",
 };
 
-export default function SignInPage() {
+/**
+ * Sign-in screen (M1). Internal-only: the sole path in is Google OAuth (ADR-0013) — there are
+ * no passwords and no self-registration. Authorization is the `public.users` allowlist, so a
+ * non-invited Gmail authenticates but the app shell then rejects it as not-authorized.
+ */
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+
   return (
     <div className="min-h-screen w-full relative flex items-center justify-center lg:justify-between px-6 sm:px-16 lg:px-28 py-12 overflow-x-hidden overflow-y-auto">
       {/* ── Background Image Layer ──────────────────────────── */}
@@ -64,16 +76,23 @@ export default function SignInPage() {
         </div>
 
         <h2 className="text-3xl font-extrabold text-white mb-2 tracking-tight font-sans">Sign In</h2>
-        <p className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-8 font-sans">Enter your credentials here:</p>
-
-        <SignInForm />
-
-        <p className="mt-8 text-center text-sm text-white/60 font-sans">
-          No account?{" "}
-          <a href="#" className="text-red-400 font-bold hover:text-red-300 hover:underline">
-            Register here
-          </a>
+        <p className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-8 font-sans">
+          IT department — internal access only
         </p>
+
+        {/* Allowlist / OAuth error surfaced by the app shell (ADR-0013). */}
+        {error === "not-authorized" ? (
+          <p className="mb-6 rounded-lg border border-amber-400/30 bg-amber-500/15 p-3 text-sm text-amber-100">
+            Your Google account isn&apos;t authorized for this system. Contact an IT
+            administrator to be invited.
+          </p>
+        ) : error ? (
+          <p className="mb-6 rounded-lg border border-red-400/30 bg-red-500/15 p-3 text-sm text-red-100">
+            Sign-in failed. Please try again.
+          </p>
+        ) : null}
+
+        <SignInButton next="/dashboard" />
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import "server-only";
 import { createApiClient } from "./http";
-import { getServerToken } from "@/lib/auth";
+import { getServerToken } from "@/lib/supabase/server";
 
 /**
  * Server-side API client — for React Server Components and Server Actions. The token comes
