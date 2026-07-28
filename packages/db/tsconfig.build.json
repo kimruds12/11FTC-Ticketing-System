@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "comment": "Emit build — inherits NodeNext (ESM) + declaration from the base. Emits src/ only (not drizzle.config.ts) so dist/index.js and dist/schema/index.js match the package exports. See ADR-0014.",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"]
+}

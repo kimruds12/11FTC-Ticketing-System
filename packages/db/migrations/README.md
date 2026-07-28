@@ -10,6 +10,7 @@ the single source of truth, so migrations stay aligned with the ERD by construct
 |---|---|
 | `0000_init.sql` | 5 enums, 8 tables, all FKs, `uq_ticket_seq UNIQUE(sequence_scope, sequence_number)`, `name_normalized` UNIQUE, `ticket_no` UNIQUE, and the ERD indexes. Uses `gen_random_uuid()` (available in Supabase by default). |
 | `0001_enable_rls_supabase.sql` | **Supabase hardening** — enables RLS (no policies) on every table, closing the auto-exposed PostgREST/anon surface. See the file header for the full rationale. |
+| `0002_curvy_hercules.sql` | Adds `users.auth_uid uuid UNIQUE` (nullable-until-claimed) — the link from the `public.users` allowlist row to the Supabase auth identity, bound on first Google login (M1 / ADR-0013). |
 
 Verify `uq_ticket_seq UNIQUE (sequence_scope, sequence_number)` is present before merging
 M3 — the database constraint is the last line of defence for numbering (ADR-0004).
@@ -36,8 +37,14 @@ changes so the two never drift.
 Supabase exposes a PostgREST REST API over every `public` table, reachable with the **anon
 key that ships in the web app**. Without RLS, that path bypasses the entire NestJS API —
 the state machine, the no-delete rule, numbering, audit. Enabling RLS with **no policies**
-denies all PostgREST access, while the backend (session pooler, `postgres` role) bypasses
-RLS and keeps full access. The app is unaffected; the public surface is closed.
+denies all PostgREST access (`anon`/`authenticated` roles), while the backend (session
+pooler, `postgres` role) **owns** these tables and a table owner bypasses RLS — so it keeps
+full access. The app is unaffected; the public surface is closed.
+
+> **Do NOT `FORCE ROW LEVEL SECURITY`.** FORCE makes RLS apply to the owner too, and our
+> backend connects *as* the owner — so FORCE + no-policies locks the backend out (every
+> `SELECT` returns zero rows, which surfaces as "no row found"). `ENABLE` alone is correct.
+> (An earlier revision used FORCE and had to be corrected — see the header of `0001`.)
 
 ## Seed data
 

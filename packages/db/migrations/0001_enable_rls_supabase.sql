@@ -9,28 +9,25 @@
 -- audit, all of it. That is unacceptable (the database is the system of record and the
 -- ONLY writer is TicketService).
 --
--- HOW: enabling RLS with no policies denies all access through PostgREST (the anon and
--- authenticated roles). Our backend does NOT go through PostgREST — it connects over the
--- session pooler as the `postgres` role, which BYPASSES RLS — so the API and worker keep
--- full access. `FORCE` also applies the deny to the table owner, closing that path too.
+-- HOW: enabling RLS with no policies denies all access through PostgREST (the `anon` and
+-- `authenticated` roles). Our backend does NOT go through PostgREST — it connects over the
+-- session pooler as the `postgres` role, which OWNS these tables, and a table owner
+-- BYPASSES RLS. So the API and worker keep full access while the public REST surface is
+-- closed.
 --
--- Net effect: the app works exactly as before; the public REST surface is closed. If a
--- table is ever meant to be readable directly via PostgREST, add an explicit policy in a
--- later migration — deliberately, not by default.
+-- DO NOT use `FORCE ROW LEVEL SECURITY` here. FORCE makes RLS apply to the table owner too,
+-- and since our backend connects AS the owner, FORCE + no-policies locks the backend out of
+-- its own tables (every SELECT returns zero rows → looks like "row not found"). ENABLE
+-- alone is exactly right: PostgREST roles denied, owner (backend) unaffected.
+--
+-- If a table is ever meant to be readable directly via PostgREST, add an explicit policy in
+-- a later migration — deliberately, not by default.
 
 ALTER TABLE "users"               ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "users"               FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "departments"         ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "departments"         FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "main_issue_category" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "main_issue_category" FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "employees"           ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "employees"           FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "ticket_sequence"     ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "ticket_sequence"     FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "tickets"             ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "tickets"             FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "audit_log"           ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "audit_log"           FORCE  ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "sync_outbox"         ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "sync_outbox"         FORCE  ROW LEVEL SECURITY;
+ALTER TABLE "sync_outbox"         ENABLE ROW LEVEL SECURITY;

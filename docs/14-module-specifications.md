@@ -71,17 +71,29 @@ rejected. No route reads the raw JWT.
 **Realizes:** FR-10–12, FR-16, §6A, §6B, §6C
 
 ### Contract
-Owns Department, MainIssueCategory, User, and Employee CRUD. Provides the vocabularies
-the encoding form and dashboards depend on.
+Owns Department, MainIssueCategory, **System User**, and **Employee** CRUD. Provides the
+vocabularies the encoding form and dashboards depend on.
+
+> **System Users ≠ Employees** (ADR-0013). A *User* is IT staff who logs in (has a role, a
+> Supabase auth identity; `created_by`/`assigned_to`). An *Employee* is a company staffer
+> who **reports** a concern (no login, no role; `employee_id`). Two separate surfaces in one
+> module — do not conflate them.
 
 ### Design
 - Lookups seeded by migration from the OPEN-4 curated lists.
+- **User provisioning = Google OAuth + admin allowlist**: sign-in is Google (Gmail) via
+  Supabase; the admin *invite* just pre-authorizes an email (the `public.users` row = the
+  allowlist). Anyone can authenticate, but no row → 403 (`no-user-row`). First admin
+  bootstrapped via SQL. See ADR-0013 and `docs/implementation/M2-master-data.md`.
+- **Employees** are an auth-free directory — created inline during encoding (M4) or via admin
+  CRUD.
 - **No admin console in v1** (deferred — `13-project-plan-trello.md`). Manage via SQL.
 - `is_active` everywhere; nothing is deleted.
 
 ### Invariants
 1. Retiring a lookup never orphans a historical ticket — `is_active = false`, never `DELETE`.
 2. Lookup contents come from the IT team, never invented. **Blocked by OPEN-4.**
+3. Users ≠ Employees; only Users authenticate. No public sign-up (ADR-0013).
 
 ### Tests that gate merge
 - Deactivating a department leaves existing tickets readable and their department name intact

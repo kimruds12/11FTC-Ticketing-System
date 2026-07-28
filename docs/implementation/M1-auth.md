@@ -8,6 +8,24 @@
 Every request arrives with a verified `AuthContext { userId, role, fullName }` or is
 rejected. No route reads the raw JWT.
 
+## Not in scope (important)
+
+M1 is **verification + RBAC only** — it *authenticates* requests, it does not *register* or
+*create* anyone.
+
+- **Sign-in** is **Google OAuth (Gmail)** via Supabase, done by the **web app**; the API
+  never sees a password. Supabase exchanges the Google login for its own session JWT — M1
+  verifies **that Supabase JWT** locally via JWKS (below). The Google exchange is upstream of
+  Supabase and does not change M1's verification.
+- **Authorization** (which Gmail may use the system, and as what role) is an **admin-managed
+  allowlist** in **M2** — the `public.users` row. There is no self-authorization: anyone can
+  authenticate with Google, but only an allowlisted email passes. See
+  [ADR-0013](../adr/0013-user-provisioning-admin-invite.md) and [M2](M2-master-data.md).
+- **Employees** (ticket reporters) are a separate, auth-free directory — also M2/M4, not
+  M1. A System User is not an Employee.
+
+M1's job is simply: given a Supabase JWT, decide *who this is and whether they may proceed*.
+
 ## Files to create
 
 ```
@@ -31,8 +49,9 @@ auth/
    cache** — key rotation would then silently reject valid users.
 3. `AuthGuard`:
    - `jwtVerify(token, jwks, { ... })` → throws on bad signature/expiry → **401**.
-   - Extract the auth UID (`sub`), load `public.users` by it.
-   - If no row, or `is_active = false` → **403**.
+   - Load the `public.users` allowlist row — by the JWT `email` (with `auth_uid` bound on
+     first login, then by `sub`); see invariant 1 for the pending linkage decision.
+   - If no row (`no-user-row`), or `is_active = false` → **403**.
    - Attach `AuthContext` to the request.
 4. `RolesGuard` reads `@Roles(...)` metadata and compares against `ctx.role`.
 
@@ -42,7 +61,13 @@ routes out explicitly.
 ## Invariants (from the spec — do not violate)
 
 1. **`public.users` is the User entity, not `auth.users`.** `assigned_to`, `created_by`,
-   `updated_by` FK to *our* table. The JWT's `sub` maps to it; store that mapping.
+   `updated_by` FK to *our* table. The allowlist row is created by **email** (M2), because
+   the Supabase `sub` doesn't exist until the invitee's first Google login.
+   **Linkage (DECIDED, ADR-0013):** match by the JWT `email` claim and **bind `auth_uid` on
+   first login** — the first matching-email session stores its `sub` into a new
+   `public.users.auth_uid` (uuid, unique, nullable-until-claimed); match by `sub` thereafter,
+   falling back to `email` only to perform the one-time claim. The `auth_uid` column is added
+   in M1's Step 0 migration.
 2. A deactivated user is rejected even with a valid JWT.
 3. The `service_role` key never leaves the backend. The web app gets only the anon key.
 

@@ -12,6 +12,9 @@ import { API_PREFIX, DEFAULT_API_VERSION } from "./common/versioning/index.js";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Fire onApplicationShutdown (DatabaseModule closes the pg pool) on SIGINT/SIGTERM.
+  app.enableShutdownHooks();
+
   // Every route lives under `/api`, then URI-versioned as `/v1` unless a controller
   // overrides its version. Health/version are VERSION_NEUTRAL (no version segment).
   // See docs/api/versioning.md and ADR-0012.
