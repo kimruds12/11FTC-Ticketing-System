@@ -3,7 +3,7 @@ import { StoreProvider } from "@/store/StoreProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "11FTC Ticketing",
+  title: "FTraCe — 11FTC IT Support System",
   description: "11FTC IT Ticketing Management System",
 };
 
@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body className="bg-surface text-gray-900 antialiased">
         <StoreProvider>{children}</StoreProvider>
       </body>
     </html>

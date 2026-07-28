@@ -28,6 +28,8 @@ contributor or coding agent can read before re-litigating a settled question.
 | [0010](0010-toolchain-versions-typescript-5x.md) | Pin TypeScript to 5.x; adopt Next 16 / NestJS 11 / Drizzle 0.45 | Accepted |
 | [0011](0011-frontend-architecture-feature-slice-redux-axios.md) | Web architecture: feature-slice + hybrid Redux (client state) + Axios services + server actions | Accepted |
 | [0012](0012-api-and-module-versioning.md) | API versioning (URI `/api/v1`) + per-module semver registry, single-module bump | Accepted |
+| [0013](0013-user-provisioning-admin-invite.md) | User provisioning by admin-invite; Users ≠ Employees; no public sign-up | Accepted |
+| [0014](0014-api-esm-nodenext.md) | The API compiles to ESM (NodeNext) — enables ESM-only deps like jose | Accepted |
 
 Requirements/design alignment: each ADR links the FRs and diagrams it affects. The
 [traceability matrix](../12-traceability-matrix.md) links back here in its status column.
