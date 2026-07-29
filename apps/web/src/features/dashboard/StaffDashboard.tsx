@@ -1,16 +1,61 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import type {
+  AnalyticsWindow,
+  CountPoint,
+  DatePoint,
+  FirstTimeFixDto,
+  OngoingAgeingItem,
+  StatusCounts,
+} from "@11ftc/shared";
+import { browserApi } from "@/services/browser";
+import { analyticsService } from "@/services/analytics.service";
 import StatCard from "./StatCard";
 import ResolutionTrendChart from "./ResolutionTrendChart";
 import ByDepartmentChart from "./ByDepartmentChart";
 import TopIssuesChart from "./TopIssuesChart";
 
+interface DashData {
+  status: StatusCounts;
+  solved: DatePoint[];
+  byDept: CountPoint[];
+  byCat: CountPoint[];
+  ftf: FirstTimeFixDto;
+  ageing: OngoingAgeingItem[];
+}
+
+const EMPTY: DashData = {
+  status: { open: 0, ongoing: 0, closed: 0, total: 0 },
+  solved: [],
+  byDept: [],
+  byCat: [],
+  ftf: { closed: 0, firstTimeFix: 0, rate: 0 },
+  ageing: [],
+};
+
+function windowFor(period: string): AnalyticsWindow {
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const to = fmt(today);
+  if (period === "today") return { from: to, to };
+  if (period === "week") {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 6);
+    return { from: fmt(d), to };
+  }
+  if (period === "month") {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 29);
+    return { from: fmt(d), to };
+  }
+  if (period === "year") return { from: `${today.getFullYear()}-01-01`, to };
+  return {}; // overall
+}
+
 /**
- * StaffDashboard Component
- *
- * Designed for IT Staff.
- * Focuses on tickets management, ongoing queues, and fast encoding actions.
+ * StaffDashboard — IT Staff view. Live analytics (M9) plus the Ongoing ageing queue
+ * (FR-24). Focuses on outstanding work rather than admin-wide oversight.
  */
 export default function StaffDashboard() {
   // null until mount: a live clock rendered during SSR would not match the client's time on
@@ -18,6 +63,7 @@ export default function StaffDashboard() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [periodFilter, setPeriodFilter] = useState("overall");
   const [refreshing, setRefreshing] = useState(false);
+  const [data, setData] = useState<DashData | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids SSR/client time mismatch
@@ -26,28 +72,40 @@ export default function StaffDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleRefresh = () => {
+  const load = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => {
+    try {
+      const svc = analyticsService(browserApi());
+      const w = windowFor(periodFilter);
+      const [status, solved, byDept, byCat, ftf, ageing] = await Promise.all([
+        svc.status(),
+        svc.solved(w),
+        svc.byDepartment(w),
+        svc.byCategory(w),
+        svc.firstTimeFix(w),
+        svc.ongoingAgeing(),
+      ]);
+      setData({ status, solved, byDept, byCat, ftf, ageing });
+    } catch {
+      setData(EMPTY);
+    } finally {
       setRefreshing(false);
-    }, 800);
-  };
+    }
+  }, [periodFilter]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate fetch on mount / period change
+    void load();
+  }, [load]);
+
+  const stat = (n: number | undefined) => (data ? String(n ?? 0) : "—");
+  const ftfPct = data ? `${Math.round(data.ftf.rate * 100)}%` : "—";
 
   const formattedTime = currentTime
-    ? currentTime.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      })
+    ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })
     : "";
-
   const formattedDate = currentTime
-    ? currentTime.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      })
+    ? currentTime.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
     : "";
 
   return (
@@ -101,7 +159,7 @@ export default function StaffDashboard() {
 
         <div className="flex items-center gap-3.5">
           <button
-            onClick={handleRefresh}
+            onClick={() => void load()}
             disabled={refreshing}
             className="btn-outline py-2 px-3.5 flex items-center gap-1.5 shadow-sm text-xs font-bold bg-white"
           >
@@ -115,23 +173,17 @@ export default function StaffDashboard() {
             </svg>
             Refresh
           </button>
-          <button className="btn-primary py-2.5 px-4 shadow-sm text-xs font-bold leading-none bg-slate-900 hover:bg-slate-800 text-white">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export Report
-          </button>
         </div>
       </div>
 
-      {/* ── Stat Cards (Restored values as requested) ── */}
+      {/* ── Stat Cards (live, M9 /analytics) ─────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Tickets Created Today"
-          value="14"
-          badge="General Activity"
+          title="Open Tickets"
+          value={stat(data?.status.open)}
+          badge="Awaiting"
           badgeColor="bg-blue-50 text-blue-700 border border-blue-200"
-          iconBg="bg-red-50"
+          iconBg="bg-blue-50"
           icon={
             <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -141,8 +193,8 @@ export default function StaffDashboard() {
         />
 
         <StatCard
-          title="Resolved Today"
-          value="8"
+          title="Resolved (Closed)"
+          value={stat(data?.status.closed)}
           badge="Support Ops"
           badgeColor="bg-teal-50 text-teal-700 border border-teal-200"
           iconBg="bg-teal-50"
@@ -156,7 +208,7 @@ export default function StaffDashboard() {
 
         <StatCard
           title="Total Ongoing"
-          value="18"
+          value={stat(data?.status.ongoing)}
           badge="Active Queue"
           badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
           iconBg="bg-amber-50"
@@ -169,15 +221,15 @@ export default function StaffDashboard() {
         />
 
         <StatCard
-          title="Assigned Tasks"
-          value="5 / 6"
-          badge="1 Pending"
-          badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
+          title="First-Time Fix"
+          value={ftfPct}
+          badge="FR-23"
+          badgeColor="bg-green-50 text-green-700 border border-green-200"
           iconBg="bg-green-50"
           icon={
             <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
           }
         />
@@ -186,7 +238,7 @@ export default function StaffDashboard() {
       {/* ── Charts Row ───────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="card p-5 lg:col-span-2 space-y-4">
-          <ResolutionTrendChart />
+          <ResolutionTrendChart data={data?.solved} />
         </div>
 
         <div className="card p-5 space-y-4">
@@ -194,7 +246,7 @@ export default function StaffDashboard() {
             <h2 className="text-base font-bold text-gray-900">By Department</h2>
             <p className="text-xs text-gray-400 font-medium mt-0.5">Ticket volume distribution (FR-18)</p>
           </div>
-          <ByDepartmentChart />
+          <ByDepartmentChart data={data?.byDept} />
         </div>
       </div>
 
@@ -207,36 +259,42 @@ export default function StaffDashboard() {
               <p className="text-xs text-gray-400 font-medium mt-0.5">Categorized ticket breakdown (FR-20)</p>
             </div>
           </div>
-          <TopIssuesChart />
+          <TopIssuesChart data={data?.byCat} />
         </div>
 
         <div className="card p-5 space-y-4">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-base font-bold text-gray-900">Ongoing Tickets (High Priority)</h2>
+              <h2 className="text-base font-bold text-gray-900">Ongoing Tickets (Ageing)</h2>
               <p className="text-xs text-gray-400 font-medium mt-0.5">
-                Outstanding tickets queue by urgency
+                Oldest outstanding tickets first (FR-24)
               </p>
             </div>
           </div>
           <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-            {[
-              { id: "1", ticket: "IT-2026-0188", employee: "Sarah Jenkins", dept: "Sales", age: "3 days ago", issue: "Network" },
-              { id: "2", ticket: "IT-2026-0191", employee: "Marcus Chen", dept: "Engineering", age: "1 day ago", issue: "Hardware" },
-            ].map((tkt) => (
-              <div key={tkt.id} className="flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-primary-700 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-200">
-                      {tkt.ticket}
-                    </span>
-                    <span className="text-xs font-semibold text-gray-800">{tkt.employee} ({tkt.dept})</span>
+            {!data ? (
+              <p className="text-xs text-gray-400 font-medium py-6 text-center">Loading queue…</p>
+            ) : data.ageing.length === 0 ? (
+              <p className="text-xs text-gray-400 font-medium py-6 text-center">No ongoing tickets. 🎉</p>
+            ) : (
+              data.ageing.map((tkt) => (
+                <div key={tkt.ticketId} className="flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-primary-700 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-200">
+                        {tkt.ticketNo}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 font-medium mt-1">
+                      Ongoing since <span className="font-bold">{tkt.ongoingAt.slice(0, 10)}</span>
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 font-medium mt-1">Issue category: <span className="font-bold">{tkt.issue}</span></p>
+                  <span className="text-[10px] text-red-600 bg-red-50 border border-red-200 font-bold uppercase px-2 py-0.5 rounded-full">
+                    {tkt.ageDays} {tkt.ageDays === 1 ? "day" : "days"}
+                  </span>
                 </div>
-                <span className="text-[10px] text-red-600 bg-red-50 border border-red-200 font-bold uppercase px-2 py-0.5 rounded-full">{tkt.age}</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

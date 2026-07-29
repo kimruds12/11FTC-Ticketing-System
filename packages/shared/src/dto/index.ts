@@ -3,3 +3,6 @@
 export * from "./auth.dto.js";
 export * from "./master-data.dto.js";
 export * from "./employee.dto.js";
+export * from "./audit.dto.js";
+export * from "./ticket.dto.js";
+export * from "./analytics.dto.js";

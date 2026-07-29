@@ -3,13 +3,14 @@
 interface UserTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  counts: { all: number; admin: number; staff: number };
 }
 
-export default function UserTabs({ activeTab, onTabChange }: UserTabsProps) {
+export default function UserTabs({ activeTab, onTabChange, counts }: UserTabsProps) {
   const tabs = [
-    { id: "all", label: "All Users", count: "4" },
-    { id: "admin", label: "IT Admin", count: "2" },
-    { id: "staff", label: "IT Staff", count: "2" },
+    { id: "all", label: "All Users", count: counts.all },
+    { id: "admin", label: "IT Admin", count: counts.admin },
+    { id: "staff", label: "IT Staff", count: counts.staff },
   ];
 
   return (

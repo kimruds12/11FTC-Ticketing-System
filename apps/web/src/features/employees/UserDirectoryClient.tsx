@@ -18,6 +18,13 @@ export default function UserDirectoryClient({ initialUsers }: { initialUsers: Us
   const [search, setSearch] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
 
+  // Tab counts derive from the real user list (not hardcoded), so they always match the table.
+  const counts = {
+    all: initialUsers.length,
+    admin: initialUsers.filter((u) => u.role === "IT Admin").length,
+    staff: initialUsers.filter((u) => u.role === "IT Staff").length,
+  };
+
   const filteredUsers = initialUsers.filter((user) => {
     const matchesSearch =
       user.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -57,7 +64,7 @@ export default function UserDirectoryClient({ initialUsers }: { initialUsers: Us
 
       {/* ── Tabs & Filter Bar ──────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-card">
-        <UserTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <UserTabs activeTab={activeTab} onTabChange={setActiveTab} counts={counts} />
 
         <div className="flex items-center gap-3">
           <div className="relative flex-1 md:w-64">
