@@ -4,13 +4,15 @@ import { OutboxRepository, type OutboxRow } from "./outbox.repository.js";
 import { SheetsClient } from "./sheets.client.js";
 
 /**
- * M8 — Sync Worker (read side). Drains PENDING outbox rows to the append-only `_raw` tab and
- * marks them SENT. Invariants (.claude/rules/sync-worker.md):
- *  - Locate rows by `row_key`, never a remembered position (silent-corruption bug otherwise).
- *  - Idempotent (FR-30): a retried row UPDATES the existing sheet row, never appends a dupe.
+ * M8 — Sync Worker (read side). Drains PENDING outbox rows into the team's visible `Tickets`
+ * tab, newest at the top, and marks them SENT. Invariants (.claude/rules/sync-worker.md):
+ *  - Locate rows by `row_key`, NEVER a remembered position. Inserting at the top shifts every
+ *    row below, so any stored index is stale immediately — writing to it would overwrite a
+ *    different ticket's row. This is the silent-corruption bug the whole design guards against.
+ *  - Idempotent (FR-30): a retried row UPDATES the existing sheet row, never inserts a dupe.
  *  - Isolation (FR-29): a Sheets/credentials failure marks the row FAILED/PENDING and NEVER
  *    throws up — encoding is on another process and is unaffected.
- *  - One-way only (FR-25): appends/updates, never reads ticket data back.
+ *  - One-way only (FR-25): inserts/updates, never reads ticket data back.
  */
 @Injectable()
 export class SyncService {
@@ -34,22 +36,14 @@ export class SyncService {
     return { sent, failed };
   }
 
-  /** Write one outbox row to `_raw`, idempotently. Returns true on success (never throws). */
+  /** Write one outbox row to the sheet, idempotently. Returns true on success (never throws). */
   async processRow(row: OutboxRow): Promise<boolean> {
     try {
       const payload = row.payload as SheetRowPayload;
-      // Locate by row_key (the authority). raw_row_number is only a retry cache — safe
-      // because `_raw` is append-only and never shifts.
-      const existing =
-        row.rawRowNumber ?? (await this.sheets.locateByRowKey(row.rowKey));
-
-      let rowNumber: number;
-      if (existing != null) {
-        await this.sheets.updateRow(existing, payload); // idempotent: retry updates, no dupe
-        rowNumber = existing;
-      } else {
-        rowNumber = await this.sheets.appendRow(payload);
-      }
+      // `upsert` re-locates by ticket_no every time. `row.rawRowNumber` is deliberately NOT
+      // consulted: rows shift whenever a newer ticket is inserted above, so a remembered
+      // index points at somebody else's row. It is stored afterwards only as a breadcrumb.
+      const rowNumber = await this.sheets.upsert(payload);
 
       await this.outbox.markSent(row.outboxId, rowNumber);
       return true;

@@ -4,6 +4,7 @@ import { TicketController } from "./ticket.controller.js";
 import { TicketRepository } from "./ticket.repository.js";
 import { NumberingModule } from "../numbering/numbering.module.js";
 import { EmployeeModule } from "../employee/employee.module.js";
+import { TechnicianModule } from "../technician/technician.module.js";
 import { AuditModule } from "../audit/audit.module.js";
 import { OutboxModule } from "../outbox/outbox.module.js";
 
@@ -14,7 +15,7 @@ import { OutboxModule } from "../outbox/outbox.module.js";
  * See .claude/rules/domain.md and docs/implementation/M5-ticket.md.
  */
 @Module({
-  imports: [NumberingModule, EmployeeModule, AuditModule, OutboxModule],
+  imports: [NumberingModule, EmployeeModule, TechnicianModule, AuditModule, OutboxModule],
   controllers: [TicketController],
   providers: [TicketService, TicketRepository],
   exports: [TicketService],

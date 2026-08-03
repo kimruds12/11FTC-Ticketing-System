@@ -11,9 +11,18 @@ import { toAppError } from "./errors";
  */
 export type TokenProvider = () => Promise<string | undefined> | string | undefined;
 
-export function createApiClient(getToken: TokenProvider): AxiosInstance {
+/**
+ * `baseURL` defaults to the browser-facing URL. The SERVER side overrides it, because the two
+ * tiers reach the API at different hosts once containerised: the browser goes through the
+ * published port (`localhost:3001`), while the web container must use the compose service name
+ * (`api:3001`) — inside that container `localhost` is the web app itself. See server.ts.
+ */
+export function createApiClient(
+  getToken: TokenProvider,
+  baseURL: string = env.apiUrl,
+): AxiosInstance {
   const client = axios.create({
-    baseURL: env.apiUrl,
+    baseURL,
     timeout: 15_000,
     headers: { "Content-Type": "application/json" },
   });

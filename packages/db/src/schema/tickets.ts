@@ -9,7 +9,7 @@ import {
   unique,
   index,
 } from "drizzle-orm/pg-core";
-import { ticketStatus } from "./enums.js";
+import { ticketStatus, ticketSource } from "./enums.js";
 import { employees } from "./employees.js";
 import { mainIssueCategory } from "./main-issue-category.js";
 import { users } from "./users.js";
@@ -42,12 +42,25 @@ export const tickets = pgTable(
       .notNull()
       .references(() => mainIssueCategory.mainIssueId),
     concern: text("concern").notNull(),
-    assignedTo: uuid("assigned_to").references(() => users.userId),
+    /**
+     * WHO HANDLED THIS lives in `ticket_assignees`, not here (ADR-0017). The old
+     * `assigned_to` FK + `assigned_label` text pair could not express two-technician work
+     * without every caller branching on "account or string?", and left FR-19 blind to the
+     * 74% of tickets recorded as a label. Do not add an assignment column back.
+     */
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.userId),
     status: ticketStatus("status").notNull(),
     remarks: text("remarks"),
+    /**
+     * Provenance (M10). 'APP' = encoded through this system. 'IMPORT' = loaded once from the
+     * legacy spreadsheet, where `ongoing_at` was never recorded — so FR-23 (first-time fix)
+     * MUST exclude 'IMPORT' rows or it reports ~100% on data that never carried the signal.
+     * Nothing is ever deleted (FR-9), so this column is also the only way to tell the two
+     * populations apart after the fact.
+     */
+    source: ticketSource("source").notNull().default("APP"),
     ongoingAt: timestamp("ongoing_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -58,7 +71,6 @@ export const tickets = pgTable(
     unique("uq_ticket_seq").on(t.sequenceScope, t.sequenceNumber),
     index("idx_tickets_date").on(t.date),
     index("idx_tickets_status").on(t.status),
-    index("idx_tickets_assigned_status").on(t.assignedTo, t.status),
     index("idx_tickets_closed_at").on(t.closedAt),
   ],
 );

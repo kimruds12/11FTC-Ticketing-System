@@ -20,9 +20,11 @@ import { EmployeeService } from "./employee.service.js";
 export class EmployeeController {
   constructor(private readonly employees: EmployeeService) {}
 
+  /** `includeInactive=true` is for the admin directory — retired people must stay visible
+   *  (nothing is deleted, FR-9). The encode form uses the default, active-only. */
   @Get()
-  list(): Promise<EmployeeDto[]> {
-    return this.employees.list();
+  list(@Query("includeInactive") includeInactive?: string): Promise<EmployeeDto[]> {
+    return this.employees.list(includeInactive === "true");
   }
 
   /** M4 — match-first search-as-you-type for the encode form (any authenticated role). */

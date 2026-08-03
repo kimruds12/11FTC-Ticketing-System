@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type {
-  AnalyticsWindow,
   CountPoint,
   DatePoint,
   FirstTimeFixDto,
+  Granularity,
   OngoingAgeingItem,
   StatusCounts,
 } from "@11ftc/shared";
@@ -14,12 +14,21 @@ import { analyticsService } from "@/services/analytics.service";
 import StatCard from "./StatCard";
 import ResolutionTrendChart from "./ResolutionTrendChart";
 import ByDepartmentChart from "./ByDepartmentChart";
+import ByTechnicianChart from "./ByTechnicianChart";
 import TopIssuesChart from "./TopIssuesChart";
+import {
+  GRANULARITIES,
+  RANGES,
+  describeWindow,
+  windowFor,
+  type RangeKey,
+} from "./period";
 
 interface DashData {
   status: StatusCounts;
   solved: DatePoint[];
   byDept: CountPoint[];
+  byTech: CountPoint[];
   byCat: CountPoint[];
   ftf: FirstTimeFixDto;
   ageing: OngoingAgeingItem[];
@@ -29,41 +38,34 @@ const EMPTY: DashData = {
   status: { open: 0, ongoing: 0, closed: 0, total: 0 },
   solved: [],
   byDept: [],
+  byTech: [],
   byCat: [],
   ftf: { closed: 0, firstTimeFix: 0, rate: 0 },
   ageing: [],
 };
 
-function windowFor(period: string): AnalyticsWindow {
-  const today = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const to = fmt(today);
-  if (period === "today") return { from: to, to };
-  if (period === "week") {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 6);
-    return { from: fmt(d), to };
-  }
-  if (period === "month") {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 29);
-    return { from: fmt(d), to };
-  }
-  if (period === "year") return { from: `${today.getFullYear()}-01-01`, to };
-  return {}; // overall
-}
-
 /**
  * StaffDashboard — IT Staff view. Live analytics (M9) plus the Ongoing ageing queue
  * (FR-24). Focuses on outstanding work rather than admin-wide oversight.
+ *
+ * Defaults to ALL TIME for the same reason as the admin view: the history predates today, so
+ * a short default window renders empty and reads as a broken dashboard.
  */
 export default function StaffDashboard() {
   // null until mount: a live clock rendered during SSR would not match the client's time on
   // hydration. Starting from null keeps server output and first client render identical.
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [periodFilter, setPeriodFilter] = useState("overall");
+  const [range, setRange] = useState<RangeKey>("all");
+  const [granularity, setGranularity] = useState<Granularity>("month");
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [data, setData] = useState<DashData | null>(null);
+
+  const analyticsWindow = useMemo(
+    () => windowFor(range, granularity),
+    [range, granularity],
+  );
+  const windowLabel = describeWindow(analyticsWindow);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids SSR/client time mismatch
@@ -76,22 +78,26 @@ export default function StaffDashboard() {
     setRefreshing(true);
     try {
       const svc = analyticsService(browserApi());
-      const w = windowFor(periodFilter);
-      const [status, solved, byDept, byCat, ftf, ageing] = await Promise.all([
+      const w = analyticsWindow;
+      const [status, solved, byDept, byTech, byCat, ftf, ageing] = await Promise.all([
         svc.status(),
         svc.solved(w),
         svc.byDepartment(w),
+        svc.byTechnician(w),
         svc.byCategory(w),
         svc.firstTimeFix(w),
         svc.ongoingAgeing(),
       ]);
-      setData({ status, solved, byDept, byCat, ftf, ageing });
-    } catch {
+      setData({ status, solved, byDept, byTech, byCat, ftf, ageing });
+      setLoadError(null);
+    } catch (e) {
+      // Surfaced, never swallowed — a blocked or failing call must not look like "no data".
       setData(EMPTY);
+      setLoadError(e instanceof Error ? e.message : "Could not reach the analytics API.");
     } finally {
       setRefreshing(false);
     }
-  }, [periodFilter]);
+  }, [analyticsWindow]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate fetch on mount / period change
@@ -137,21 +143,40 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      {/* ── Period Filter + Action Row ──────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
+      {/* ── Range + Granularity + Action Row ──────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-            {["overall", "today", "week", "month", "year"].map((opt) => (
+            {RANGES.map((r) => (
               <button
-                key={opt}
-                onClick={() => setPeriodFilter(opt)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 capitalize ${
-                  periodFilter === opt
+                key={r.key}
+                onClick={() => {
+                  setRange(r.key);
+                  setGranularity(r.defaultGranularity);
+                }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
+                  range === r.key
                     ? "bg-white text-gray-900 shadow-sm"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                {opt}
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+            {GRANULARITIES.map((g) => (
+              <button
+                key={g.key}
+                onClick={() => setGranularity(g.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
+                  granularity === g.key
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {g.label}
               </button>
             ))}
           </div>
@@ -176,6 +201,12 @@ export default function StaffDashboard() {
         </div>
       </div>
 
+
+      {loadError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          Analytics could not be loaded: {loadError}
+        </div>
+      )}
       {/* ── Stat Cards (live, M9 /analytics) ─────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -238,7 +269,11 @@ export default function StaffDashboard() {
       {/* ── Charts Row ───────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="card p-5 lg:col-span-2 space-y-4">
-          <ResolutionTrendChart data={data?.solved} />
+          <ResolutionTrendChart
+            data={data?.solved}
+            granularity={granularity}
+            emptyHint={`No tickets were closed ${windowLabel}.`}
+          />
         </div>
 
         <div className="card p-5 space-y-4">
@@ -248,6 +283,20 @@ export default function StaffDashboard() {
           </div>
           <ByDepartmentChart data={data?.byDept} />
         </div>
+      </div>
+
+      {/* ── By Technician (FR-19) ─────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">By Technician</h2>
+          <p className="text-xs text-gray-400 font-medium mt-0.5">
+            Tickets handled per person (FR-19)
+          </p>
+        </div>
+        <ByTechnicianChart
+          data={data?.byTech}
+          emptyHint={`No tickets were handled ${windowLabel}.`}
+        />
       </div>
 
       {/* ── Bottom Row (Top Issues + Ongoing Tickets) ── */}

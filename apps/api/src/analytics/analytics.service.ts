@@ -7,6 +7,7 @@ import {
   type CountPoint,
   type DatePoint,
   type FirstTimeFixDto,
+  type Granularity,
   type OngoingAgeingItem,
   type StatusCounts,
 } from "@11ftc/shared";
@@ -14,6 +15,31 @@ import { DATABASE } from "../database/database.constants.js";
 
 // count(*) as a JS number — cast ::int so node-postgres doesn't hand back a bigint string.
 const countInt = sql<number>`count(*)::int`;
+
+const GRANULARITIES = new Set<Granularity>(["day", "week", "month"]);
+
+/**
+ * Bucket start for a time series. `date_trunc` aligns to real calendar boundaries — a week
+ * always starts Monday, a month on the 1st — so two people looking at "this month" see the
+ * same buckets regardless of when they loaded the page.
+ *
+ * The granularity is INLINED with `sql.raw`, not bound as a parameter, and that is load-bearing:
+ * Postgres matches GROUP BY expressions syntactically, while drizzle re-emits this expression
+ * with a FRESH placeholder in GROUP BY and ORDER BY. Bound, it becomes `date_trunc($1, …)` in
+ * SELECT and `date_trunc($2, …)` in GROUP BY — two different expressions as far as the planner
+ * is concerned — and the whole query dies with "column tickets.date must appear in the GROUP BY
+ * clause". Inlining makes all three occurrences identical.
+ *
+ * Safe because `g` comes from a Zod enum, never from raw input. The assertion below is the
+ * belt-and-braces guarantee that stays true if someone later widens the type.
+ */
+function bucket(expr: SQL, g: Granularity | undefined): SQL<string> {
+  // `undefined` means the caller omitted it; fall back to the same default
+  // `granularitySchema` applies, so an internal caller behaves like an HTTP one.
+  const key = g ?? "day";
+  if (!GRANULARITIES.has(key)) throw new Error(`invalid granularity: ${String(g)}`);
+  return sql<string>`to_char(date_trunc('${sql.raw(key)}', ${expr}), 'YYYY-MM-DD')`;
+}
 
 /**
  * M9 — Analytics. Read-only aggregates over Postgres (no writes, no cache/materialized views
@@ -25,26 +51,30 @@ const countInt = sql<number>`count(*)::int`;
 export class AnalyticsService {
   constructor(@Inject(DATABASE) private readonly db: Db) {}
 
-  /** FR-17 — ticket volume bucketed by encode date. */
+  /** FR-17 — ticket volume bucketed by encode date, daily/weekly/monthly. */
   async volume(w: AnalyticsWindow): Promise<DatePoint[]> {
+    const b = bucket(sql`${schema.tickets.date}::timestamp`, w.granularity);
     const rows = await this.db
-      .select({ date: schema.tickets.date, count: countInt })
+      .select({ date: b, count: countInt })
       .from(schema.tickets)
       .where(dateWindow(w))
-      .groupBy(schema.tickets.date)
-      .orderBy(schema.tickets.date);
+      .groupBy(b)
+      .orderBy(b);
     return rows.map((r) => ({ date: r.date, count: r.count }));
   }
 
   /** FR-21 — problems solved, bucketed by CLOSED_AT (never `date`/`updated_at`). */
   async solved(w: AnalyticsWindow): Promise<DatePoint[]> {
-    const day = sql<string>`to_char(${schema.tickets.closedAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+    const b = bucket(
+      sql`(${schema.tickets.closedAt} at time zone 'UTC')`,
+      w.granularity,
+    );
     const rows = await this.db
-      .select({ date: day, count: countInt })
+      .select({ date: b, count: countInt })
       .from(schema.tickets)
       .where(and(eq(schema.tickets.status, TicketStatus.CLOSED), closedAtWindow(w)))
-      .groupBy(day)
-      .orderBy(day);
+      .groupBy(b)
+      .orderBy(b);
     return rows.map((r) => ({ date: r.date, count: r.count }));
   }
 
@@ -80,14 +110,28 @@ export class AnalyticsService {
     return rows.map((r) => ({ key: r.key, count: r.count }));
   }
 
-  /** FR-19 — by assigned technician (assigned tickets only). */
+  /**
+   * FR-19 — by technician, through `ticket_assignees` (ADR-0017).
+   *
+   * This used to join `users` on the old `assigned_to` FK, which meant it only ever saw the
+   * tickets whose handler happened to hold an account — 73 of 280 on the real data. Joining
+   * the assignee table instead covers every ticket, and a two-technician ticket credits BOTH
+   * (so the column total legitimately exceeds the ticket count).
+   */
   async byTechnician(w: AnalyticsWindow): Promise<CountPoint[]> {
     const rows = await this.db
-      .select({ key: schema.users.fullName, count: countInt })
+      .select({ key: schema.technicians.name, count: countInt })
       .from(schema.tickets)
-      .innerJoin(schema.users, eq(schema.tickets.assignedTo, schema.users.userId))
+      .innerJoin(
+        schema.ticketAssignees,
+        eq(schema.tickets.ticketId, schema.ticketAssignees.ticketId),
+      )
+      .innerJoin(
+        schema.technicians,
+        eq(schema.ticketAssignees.technicianId, schema.technicians.technicianId),
+      )
       .where(dateWindow(w))
-      .groupBy(schema.users.fullName)
+      .groupBy(schema.technicians.name)
       .orderBy(sql`count(*) desc`);
     return rows.map((r) => ({ key: r.key, count: r.count }));
   }
@@ -107,15 +151,22 @@ export class AnalyticsService {
     return rows.map((r) => ({ key: r.key, count: r.count }));
   }
 
-  /** FR-23 — first-time fix: Closed AND `ongoing_at IS NULL`, over Closed. Windowed on closed_at. */
+  /**
+   * FR-23 — first-time fix: Closed AND `ongoing_at IS NULL`, over Closed. Windowed on closed_at.
+   *
+   * EXCLUDES `source='IMPORT'` (ADR-0015). The legacy spreadsheet never recorded `ongoing_at`,
+   * so every imported Closed row looks like a first-time fix and the rate would read ~100% on
+   * data that carries no signal. Imported rows stay in every other metric, where they are real.
+   */
   async firstTimeFix(w: AnalyticsWindow): Promise<FirstTimeFixDto> {
+    const appOnly = eq(schema.tickets.source, "APP");
     const rows = await this.db
       .select({
         closed: sql<number>`(count(*) filter (where ${schema.tickets.status} = 'Closed'))::int`,
         ftf: sql<number>`(count(*) filter (where ${schema.tickets.status} = 'Closed' and ${schema.tickets.ongoingAt} is null))::int`,
       })
       .from(schema.tickets)
-      .where(closedAtWindow(w));
+      .where(and(appOnly, closedAtWindow(w)));
     const r = rows[0] ?? { closed: 0, ftf: 0 };
     return {
       closed: r.closed,

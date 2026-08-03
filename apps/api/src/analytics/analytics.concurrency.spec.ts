@@ -114,8 +114,9 @@ describe("M9 analytics", () => {
         });
 
         const svc = new AnalyticsService(tx as unknown as Db);
-        solved = await svc.solved({ from: "2099-06-01", to: "2099-06-30" });
-        ftf = await svc.firstTimeFix({ from: "2099-06-01", to: "2099-06-30" });
+        const w = { from: "2099-06-01", to: "2099-06-30", granularity: "day" } as const;
+        solved = await svc.solved(w);
+        ftf = await svc.firstTimeFix(w);
         throw new RollbackSignal();
       }),
     );
@@ -128,5 +129,55 @@ describe("M9 analytics", () => {
     expect(ftf.closed).toBe(2);
     expect(ftf.firstTimeFix).toBe(1); // only A (closed without ever going Ongoing)
     expect(ftf.rate).toBe(0.5);
+  });
+
+  /**
+   * REGRESSION: every granularity must actually EXECUTE.
+   *
+   * `date_trunc(<granularity>, …)` appears in SELECT, GROUP BY and ORDER BY. Bound as a
+   * parameter it becomes `$1`/`$2`/`$3` — three syntactically different expressions to the
+   * planner — and Postgres rejects the query with "column tickets.date must appear in the
+   * GROUP BY clause". Nothing catches that without a real database: the types are fine, the
+   * SQL string looks fine, and the dashboard's `Promise.all` turns the 500 into a silently
+   * blank page. Hence a real-Postgres test that simply runs all three.
+   */
+  it("volume and solved execute at every granularity (day/week/month)", async () => {
+    const svc = new AnalyticsService(db);
+    const w = { from: "2099-06-01", to: "2099-06-30" } as const;
+
+    for (const granularity of ["day", "week", "month"] as const) {
+      await expect(svc.volume({ ...w, granularity })).resolves.toBeInstanceOf(Array);
+      await expect(svc.solved({ ...w, granularity })).resolves.toBeInstanceOf(Array);
+    }
+  });
+
+  /** Month buckets must land on the 1st — the axis labels and the API must agree. */
+  it("month buckets are calendar-aligned to the 1st", async () => {
+    let points: DatePoint[] = [];
+
+    await catchRollback(
+      db.transaction(async (tx) => {
+        await tx.insert(schema.ticketSequence).values({ scopeKey: "2099", lastSequence: 1 });
+        await tx.insert(schema.tickets).values({
+          ticketNo: "IT-2099-0003",
+          date: "2099-06-15", // mid-month
+          sequenceScope: "2099",
+          sequenceNumber: 1,
+          employeeId,
+          mainIssueId,
+          concern: "bucket alignment fixture",
+          createdBy: userId,
+          status: TicketStatus.CLOSED,
+          closedAt: new Date("2099-06-15T10:00:00Z"),
+        });
+
+        const svc = new AnalyticsService(tx as unknown as Db);
+        points = await svc.volume({ from: "2099-06-01", to: "2099-06-30", granularity: "month" });
+        throw new RollbackSignal();
+      }),
+    );
+
+    expect(points).toHaveLength(1);
+    expect(points[0]?.date).toBe("2099-06-01"); // NOT 2099-06-15
   });
 });

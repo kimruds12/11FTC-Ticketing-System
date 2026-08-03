@@ -63,7 +63,7 @@ is unreadable to the audience it was drawn for. Traceability belongs in a table.
 |---|---|---|---|
 | FR-17 | Daily / weekly / monthly statistics | View Dashboard | UC, DFD1 (8.0) |
 | FR-18 | Tickets by department | View Dashboard | ERD (`department_id` FK), DFD1 (D7) |
-| FR-19 | Tickets by technician | View Dashboard | ERD (`assigned_to` → User), CLS |
+| FR-19 | Tickets by technician | View Dashboard | ERD (`ticket_assignees` → Technician), CLS |
 | FR-20 | Tickets by main issue category | View Dashboard | ERD (`main_issue_id` FK), DFD1 (D7) |
 | FR-21 | Problems solved per period, by `closed_at` | View Dashboard | ERD (`closed_at`), STM |
 | FR-22 | Open vs Ongoing vs Closed counts | View Dashboard | UC, STM |
@@ -223,7 +223,7 @@ because they are pending.
 |---|---|
 | `Resolved → In Progress` (reopen) | Closed is terminal (FR-8). A recurrence is a new ticket. |
 | `Pending → In Progress`, `Assigned`, `In Progress`, `Resolved` | Four states the department has never used. Work happens before the ticket exists. |
-| `assigned → assigned` (reassign) | `assigned_to` is a record of who handled the concern, not a workflow stage. |
+| `assigned → assigned` (reassign) | The technician list is a record of who handled the concern, not a workflow stage. |
 | `Voided` status | Invented to handle encoding errors. Those are handled by editing (FR-9). |
 | IT Staff → *Close Ticket* as an open question | Settled by the process — staff solve and close directly. |
 

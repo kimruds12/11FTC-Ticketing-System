@@ -6,24 +6,47 @@
 # not provide) runs locally; override REDIS_URL if you have a managed Redis instead.
 #
 # Services run from the node base image with the source bind-mounted and `pnpm dev`
-# (watch mode) for hot reload — no image rebuild on code change. First `up` runs
-# `pnpm install`, which populates the node_modules volumes (slower once, fast after).
+# (watch mode) for hot reload — no image rebuild on code change.
 #
 #   cp .env.example .env   # fill in the remote Supabase values first
 #   docker compose up
 #
-# Windows note: bind-mounted node_modules can be slow; if iteration drags, run
-# `pnpm dev` on the host instead and use this compose only for Redis.
+# DEPENDENCIES ARE INSTALLED ONCE, by the one-shot `deps` service. Do NOT move `pnpm install`
+# back into the individual service commands: api, worker and web share the same
+# root_node_modules volume and pnpm store, so three concurrent installs race and fail with
+# `ERR_PNPM_ENOENT ... copyfile`. Every runtime service waits for `deps` to complete.
+#
+# node_modules are named volumes, never the host's: the host tree is Windows/macOS-native and
+# would break inside a Linux container. `dist/` and `.next/` come through the bind mount, so
+# a host `pnpm build` is visible here.
+#
+# Windows note: bind-mounted I/O can be slow; if iteration drags, run `pnpm dev` on the host
+# and use this compose only for Redis (`docker compose up -d redis`).
 
-x-node-dev: &node-dev
+x-node-base: &node-base
   image: node:20-alpine
   working_dir: /app
   env_file: .env
   environment:
     REDIS_URL: redis://redis:6379
-  depends_on:
-    redis:
-      condition: service_healthy
+    # Keep the pnpm store off the bind mount — on the host filesystem it is slow and, being
+    # shared between containers, was a second source of install races.
+    npm_config_store_dir: /pnpm-store
+    # POLL for file changes. inotify events do NOT cross the Windows/macOS → Linux bind mount,
+    # so `nest start --watch` and Next's dev server simply never notice a host edit: the
+    # container keeps serving the code it started with, and a fix that is definitely on disk
+    # appears not to work. Polling is the only reliable watcher here. Costs a little CPU.
+    CHOKIDAR_USEPOLLING: "true" # tsc/nest watch
+    CHOKIDAR_INTERVAL: "500"
+    WATCHPACK_POLLING: "true" # Next.js (webpack/turbopack)
+  volumes:
+    - .:/app
+    - pnpm_store:/pnpm-store
+    - root_node_modules:/app/node_modules
+    - api_node_modules:/app/apps/api/node_modules
+    - web_node_modules:/app/apps/web/node_modules
+    - db_node_modules:/app/packages/db/node_modules
+    - shared_node_modules:/app/packages/shared/node_modules
 
 services:
   redis:
@@ -36,42 +59,71 @@ services:
       timeout: 3s
       retries: 10
 
+  # One-shot: installs into the shared volumes, then exits. Everything else waits on it.
+  deps:
+    <<: *node-base
+    command: sh -c "corepack enable && pnpm install --prefer-offline && pnpm --filter @11ftc/shared --filter @11ftc/db build"
+    restart: "no"
+
   api:
-    <<: *node-dev
-    command: sh -c "corepack enable && pnpm install && pnpm --filter @11ftc/api dev"
+    <<: *node-base
+    command: sh -c "corepack enable && pnpm --filter @11ftc/api dev"
     ports:
       - "3001:3001"
-    volumes:
-      - .:/app
-      - root_node_modules:/app/node_modules
-      - api_node_modules:/app/apps/api/node_modules
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   worker:
-    <<: *node-dev
-    command: sh -c "corepack enable && pnpm install && pnpm --filter @11ftc/api dev:worker"
-    volumes:
-      - .:/app
-      - root_node_modules:/app/node_modules
-      - api_node_modules:/app/apps/api/node_modules
+    <<: *node-base
+    command: sh -c "corepack enable && pnpm --filter @11ftc/api dev:worker"
+    depends_on:
+      deps:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   web:
-    <<: *node-dev
-    command: sh -c "corepack enable && pnpm install && pnpm --filter @11ftc/web dev"
+    <<: *node-base
+    command: sh -c "corepack enable && pnpm --filter @11ftc/web dev"
+    environment:
+      REDIS_URL: redis://redis:6379
+      npm_config_store_dir: /pnpm-store
+      # Must be repeated: an `environment:` key REPLACES the anchor's map, it does not merge.
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "500"
+      WATCHPACK_POLLING: "true"
+      # Server-side (RSC + Server Actions) must reach the API by SERVICE NAME: inside this
+      # container `localhost:3001` is the web app itself, not the api. The browser keeps using
+      # NEXT_PUBLIC_API_URL (the published port). See apps/web/src/services/server.ts.
+      API_INTERNAL_URL: http://api:3001/api/v1
+    # Full list, because a `volumes:` key REPLACES the anchor's list (YAML does not merge
+    # sequences). The addition that matters is `web_next`: without it, `.next` comes from the
+    # bind mount, and Turbopack reads a host-built (Windows) .next and panics with
+    # "Next.js package not found", leaving the page reloading forever.
+    volumes:
+      - .:/app
+      - pnpm_store:/pnpm-store
+      - root_node_modules:/app/node_modules
+      - web_node_modules:/app/apps/web/node_modules
+      - db_node_modules:/app/packages/db/node_modules
+      - shared_node_modules:/app/packages/shared/node_modules
+      - web_next:/app/apps/web/.next
     ports:
       - "3000:3000"
     depends_on:
-      redis:
-        condition: service_healthy
+      deps:
+        condition: service_completed_successfully
       api:
         condition: service_started
-    volumes:
-      - .:/app
-      - root_node_modules:/app/node_modules
-      - web_node_modules:/app/apps/web/node_modules
-      - web_next:/app/apps/web/.next
 
 volumes:
+  pnpm_store:
   root_node_modules:
   api_node_modules:
   web_node_modules:
+  db_node_modules:
+  shared_node_modules:
   web_next:

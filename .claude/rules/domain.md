@@ -11,9 +11,9 @@ most important structural rule; most of the other invariants ride on it.
 1. `TicketService` opens exactly one transaction per mutating operation (encode, update,
    assign, mark-ongoing, close). It passes the `tx` handle down.
 2. **Nothing below `TicketService` opens its own transaction.** `NumberingService`,
-   `EmployeeService`, `AuditService`, and `OutboxService` all accept a `tx` and run inside
-   the caller's. If any of them opens a new connection/transaction, the atomicity
-   guarantee is silently gone.
+   `EmployeeService`, `TechnicianService`, `AuditService`, and `OutboxService` all accept a
+   `tx` and run inside the caller's. If any of them opens a new connection/transaction, the
+   atomicity guarantee is silently gone.
 3. The number, the ticket row, the audit rows (one per changed field), and the outbox row
    **commit together or not at all**.
 4. **BullMQ dispatch happens AFTER commit.** If you enqueue inside the transaction, the
@@ -34,6 +34,21 @@ dispatch BullMQ "drain" trigger    -- after commit only
 
 The lock must precede the legality check. Without it, two users both read `Ongoing`, both
 judge their transition legal, and the audit log records a transition that never happened.
+
+## Who handled the ticket (ADR-0017)
+
+- **One field, `assignees: string[]` — NAMES, not ids, and not accounts.** A technician is a
+  directory entry like an employee, deduped by `normalizeName` + a unique index. Most of the
+  real handlers have never signed in; requiring an account to record attribution is what this
+  replaced.
+- `TechnicianService.resolveOrCreateMany` runs **inside the encode/assign `tx`**, so a name
+  typed for the first time and the ticket that introduced it commit together.
+- Rows live in `ticket_assignees` (many-to-many). Two-technician work is ~21% of the real
+  history — do NOT collapse this back to a single FK.
+- `position` is the typed order and it matters: the sheet's column G is
+  `formatAssignees(...)` = names joined with `/`. Reordering rewrites the cell.
+- Re-assignment replaces the whole set. Deleting a stale join row is fine — join rows are not
+  history; the **audit log** records that assignment changed, and that is never deleted.
 
 ## Status rules (SRS §4.1, FR-1/2/7/8)
 

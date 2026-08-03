@@ -26,11 +26,7 @@ function outboxRow(over: Partial<OutboxRow> = {}): OutboxRow {
 }
 
 function mocks() {
-  const sheets = {
-    locateByRowKey: vi.fn(),
-    appendRow: vi.fn(),
-    updateRow: vi.fn(),
-  };
+  const sheets = { upsert: vi.fn() };
   const outbox = {
     claimPending: vi.fn(),
     markSent: vi.fn(),
@@ -44,42 +40,47 @@ function mocks() {
 }
 
 describe("SyncService.processRow", () => {
-  it("appends a NEW row when row_key isn't found, and caches the index", async () => {
+  it("writes the ticket and records the row it landed on", async () => {
     const { sheets, outbox, svc } = mocks();
-    sheets.locateByRowKey.mockResolvedValue(null);
-    sheets.appendRow.mockResolvedValue(7);
+    sheets.upsert.mockResolvedValue(3);
 
     const ok = await svc.processRow(outboxRow());
 
     expect(ok).toBe(true);
-    expect(sheets.appendRow).toHaveBeenCalledTimes(1);
-    expect(sheets.updateRow).not.toHaveBeenCalled();
-    expect(outbox.markSent).toHaveBeenCalledWith("ob-1", 7);
-  });
-
-  it("UPDATES the existing row when row_key is found — never a duplicate (FR-30)", async () => {
-    const { sheets, outbox, svc } = mocks();
-    sheets.locateByRowKey.mockResolvedValue(3);
-
-    await svc.processRow(outboxRow());
-
-    expect(sheets.updateRow).toHaveBeenCalledWith(3, expect.anything());
-    expect(sheets.appendRow).not.toHaveBeenCalled();
+    expect(sheets.upsert).toHaveBeenCalledTimes(1);
     expect(outbox.markSent).toHaveBeenCalledWith("ob-1", 3);
   });
 
-  it("uses raw_row_number cache without rescanning (retry path)", async () => {
+  it("IGNORES raw_row_number — rows shift when a newer ticket is inserted above", async () => {
+    // The stored index is a breadcrumb, never an instruction: acting on it would write to
+    // whichever ticket has since shifted into that position.
     const { sheets, svc } = mocks();
+    sheets.upsert.mockResolvedValue(4);
 
     await svc.processRow(outboxRow({ rawRowNumber: 42 }));
 
-    expect(sheets.locateByRowKey).not.toHaveBeenCalled();
-    expect(sheets.updateRow).toHaveBeenCalledWith(42, expect.anything());
+    // Located afresh by ticket_no; the stale 42 never reaches the sheet.
+    expect(sheets.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ticketNo: "IT-2099-0001" }),
+    );
+    expect(sheets.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("is idempotent — a retry re-runs the same upsert, never a duplicate (FR-30)", async () => {
+    const { sheets, outbox, svc } = mocks();
+    sheets.upsert.mockResolvedValue(3);
+
+    await svc.processRow(outboxRow());
+    await svc.processRow(outboxRow({ rawRowNumber: 3 }));
+
+    // Same ticket, same landing row both times — the sheet gains no second copy.
+    expect(outbox.markSent).toHaveBeenNthCalledWith(1, "ob-1", 3);
+    expect(outbox.markSent).toHaveBeenNthCalledWith(2, "ob-1", 3);
   });
 
   it("a Sheets failure marks the row failed and NEVER throws (isolation, FR-29)", async () => {
     const { sheets, outbox, svc } = mocks();
-    sheets.locateByRowKey.mockRejectedValue(new Error("google down"));
+    sheets.upsert.mockRejectedValue(new Error("google down"));
 
     await expect(svc.processRow(outboxRow())).resolves.toBe(false);
 

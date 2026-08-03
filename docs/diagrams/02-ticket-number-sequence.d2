@@ -15,7 +15,7 @@ db: PostgreSQL
 ob: Sync Outbox
 q: Redis Queue
 
-ui -> api: "POST /tickets\n{date, employee_name, department,\n main_issue, concern, assigned_to}"
+ui -> api: "POST /tickets\n{date, employee_name, department,\n main_issue, concern, assignees[]}"
 api -> svc: validate + dispatch
 
 svc -> db: "BEGIN"

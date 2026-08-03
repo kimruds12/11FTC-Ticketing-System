@@ -118,7 +118,21 @@ export default function GenerateReportsPage() {
         <div>
           <h2 className="text-lg font-bold text-gray-900">Report Console</h2>
           <p className="text-xs text-gray-400 font-semibold mt-0.5">
-            Real-time administrative data metrics audits for 11FTC support system
+            Administrative ticket metrics for the 11FTC support system
+          </p>
+        </div>
+
+        {/* Stated up front, not only after Generate. The dropdowns below are hardcoded lists
+            that do NOT match the real departments/main issues in the database, and the table
+            reads `compilationMockData` — no API call happens anywhere on this page. */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-xs font-bold text-amber-900">
+            This screen is a mock-up — the figures below are placeholder data.
+          </p>
+          <p className="text-[11px] text-amber-800 font-medium mt-0.5 leading-relaxed">
+            It does not read from the database or Google Sheets, and the filter lists are not
+            the department&apos;s real ones. For live figures use the Dashboard, which is wired
+            to the analytics API.
           </p>
         </div>
 
@@ -251,8 +265,13 @@ export default function GenerateReportsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="bg-primary-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                  SYNCED WITH GOOGLE SHEETS
+                {/* This badge used to claim the figures were synced with the spreadsheet,
+                    over numbers that come from the hardcoded `compilationMockData` above. A
+                    page that misreports itself as live is worse than one that plainly says
+                    it is not — those figures could otherwise be taken into a meeting.
+                    Restore a live-status badge only once the table reads from the API. */}
+                <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                  Sample data — not connected
                 </span>
               </div>
             </div>
@@ -341,7 +360,8 @@ export default function GenerateReportsPage() {
               AUDIT DATA PENDING COMPILATION
             </p>
             <p className="text-xs text-gray-400 font-semibold max-w-sm mt-1 leading-relaxed">
-              Select department, main issue category, and target month, then click Generate Report to fetch synced Google Sheets data.
+              Select department, main issue category, and target month, then click Generate
+              Report. Output is placeholder data until this screen is wired to the API.
             </p>
           </div>
         )}

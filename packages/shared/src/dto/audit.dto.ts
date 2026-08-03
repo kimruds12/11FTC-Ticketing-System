@@ -13,5 +13,7 @@ export interface AuditEntryDto {
   newValue: string | null;
   /** `public.users.user_id` of the actor (from the verified session, never the body). */
   updatedBy: string;
+  /** Denormalized at the boundary so the history is readable without the admin-only /users. */
+  updatedByName: string | null;
   updatedAt: string;
 }

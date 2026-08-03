@@ -9,6 +9,7 @@ import { TicketService } from "./ticket.service.js";
 import { TicketRepository, type TicketRow } from "./ticket.repository.js";
 import { NumberingService } from "../numbering/numbering.service.js";
 import { EmployeeService } from "../employee/employee.service.js";
+import { TechnicianService } from "../technician/technician.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import { OutboxService } from "../outbox/outbox.service.js";
 
@@ -79,6 +80,7 @@ beforeAll(async () => {
     new TicketRepository(db),
     new NumberingService("year"),
     new EmployeeService(db),
+    new TechnicianService(db),
     new AuditService(db),
     new OutboxService(),
   );
@@ -106,7 +108,7 @@ function input(status: EncodeTicketDto["status"]): EncodeTicketDto {
     mainIssueId,
     concern: "printer offline",
     status,
-    assignedTo: null,
+    assignees: [],
     remarks: null,
   };
 }
