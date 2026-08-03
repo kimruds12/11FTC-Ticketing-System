@@ -11,9 +11,10 @@
     "start": "node dist/main.js",
     "start:worker": "node dist/main.worker.js",
     "lint": "eslint \"src/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
     "test": "vitest run",
-    "test:concurrency": "vitest run --config vitest.concurrency.config.ts"
+    "test:concurrency": "vitest run --config vitest.concurrency.config.ts",
+    "import:sheet": "nest start --entryFile main.import --"
   },
   "dependencies": {
     "@11ftc/db": "workspace:*",

@@ -45,3 +45,11 @@ Thumbs.db
 
 # google application credentials
 /google_application_credentials
+
+# Legacy spreadsheet exports for the M10 import. These hold real employee names and
+# ticket content — keep them local. The import runs from a file you supply, never from
+# a committed copy.
+/docs/11FTC-TICKET-SHEET/
+*.xlsx
+*.xls
+!docs/**/*template*.xlsx
