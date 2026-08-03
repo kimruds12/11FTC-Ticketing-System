@@ -111,6 +111,8 @@ note: |md
   5. **The queue job dispatches after commit.** Dispatching inside the transaction
      races the worker: it can pick up the job and query a row that hasn't landed yet.
 
-  **Assignment is not in this diagram.** `assigned_to` records who handled the
-  concern; it is a field on the ticket, not a lifecycle stage. Nothing branches on it.
+  **Assignment is not in this diagram.** The technician list records who handled the
+  concern (ADR-0017); it is data on the ticket, not a lifecycle stage. Nothing branches
+  on it, and Closed tickets remain re-assignable — correcting the record is an edit
+  (FR-9), not a reopen.
 | {near: bottom-center; shape: text}

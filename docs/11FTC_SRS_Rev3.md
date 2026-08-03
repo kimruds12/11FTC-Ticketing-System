@@ -163,7 +163,7 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 ### 4.4 Google Sheets Synchronization
 - FR-25. The relational database is the system of record. Synchronization is **one-way: database → sheet**. The system does not read ticket data back from the sheet. *(Closes OPEN in rev 2; see also OPEN-3.)*
 - FR-26. Ticket records are exported using the existing spreadsheet columns, unchanged: Date, Ticket No, Employee, Department, Main Issue, Concern, Assigned To, Status, Remarks.
-- FR-27. Foreign keys are resolved to display names at export time. `employee_id` becomes the employee name, `assigned_to` becomes the technician name, `main_issue_id` becomes the category label. IDs are never written to the sheet.
+- FR-27. Foreign keys are resolved to display names at export time. `employee_id` becomes the employee name, the assignee list becomes the technician names joined with `/` (`"Kim/Paul"`), `main_issue_id` becomes the category label. IDs are never written to the sheet.
 - FR-28. The sheet is displayed **newest-first**: the most recent ticket appears at the top. This ordering must be preserved.
 - FR-29. Synchronization is asynchronous. A failure to reach Google must not fail or delay ticket encoding.
 - FR-30. Synchronization is idempotent. A retried write updates the existing row for that ticket number; it never creates a duplicate.
@@ -194,7 +194,7 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 | employee_id | UUID (FK) | References Employee |
 | main_issue_id | UUID (FK) | References MainIssueCategory (§6B). **Was free-text VARCHAR in rev 2.** |
 | concern | TEXT | Detailed concern |
-| assigned_to | UUID (FK, NULL) | References User (§6C). Records **who handled the concern** — a field, not a workflow stage. Nothing branches on it. |
+| *(assignment)* | — | **Not a column.** Who handled the concern lives in `ticket_assignees` → `technicians` (rev 5, ADR-0017): an ordered many-to-many, because two-technician work is ~21% of real tickets and most handlers hold no account. Still a record, not a workflow stage — nothing branches on it. |
 | created_by | UUID (FK) | References User. Who encoded the ticket. |
 | status | ENUM | **Open, Ongoing, Closed** |
 | remarks | TEXT | Resolution notes |
@@ -357,17 +357,19 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 ```text
 Department (1) ----< Employee (1) ----< Ticket >---- (1) MainIssueCategory
                                           |
-                          User (1) ----<  |  (assigned_to, created_by)
+                          User (1) ----<  |  (created_by)
+                                          |
+              Technician (1) ----< TicketAssignee >---+   (who handled it, ordered)
                                           |
                           +---------------+---------------+
                           v                               v
                       AuditLog >---- (1) User        SyncOutbox
-                                          
+
 TicketSequence (scope_key) ----> allocates Ticket.ticket_no
-SyncOutbox ----> Google Sheet (_raw tab, one-way)
+SyncOutbox ----> Google Sheet (Tickets tab, one-way, newest-first)
 ```
 
-**Indexes**: `tickets(date)`, `tickets(status)`, `tickets(assigned_to, status)`, `tickets(closed_at)`, `tickets(ongoing_at)`, `sync_outbox(status, created_at)`, `employees(name_normalized)`.
+**Indexes**: `tickets(date)`, `tickets(status)`, `tickets(closed_at)`, `tickets(ongoing_at)`, `ticket_assignees(technician_id)`, `sync_outbox(status, created_at)`, `employees(name_normalized)`, `technicians(name_normalized)`.
 
 ## 11. Future Enhancements
 - SLA monitoring and ticket priority
@@ -395,6 +397,7 @@ SyncOutbox ----> Google Sheet (_raw tab, one-way)
 
 | Rev | Change |
 |---|---|
+| **5** | **Assignment decoupled from accounts (ADR-0017).** `assigned_to` (FK to User) and the `assigned_label` free-text fallback replaced by a **Technician directory** + ordered `TicketAssignee` join. Driven by the real data: two-technician work is 21% of tickets, 74% of handlers held no account, and FR-19 was therefore reporting on 26% of the history while omitting the busiest technician entirely. A technician is an auth-free directory entry like an Employee, resolve-or-created inline during encoding. FR-19 and FR-27 restated; no requirement added or removed. Analytics time series (FR-17, FR-21) gained a `day`/`week`/`month` granularity independent of the window. |
 | **4.1** | **Numbering defect fix.** FR-24 was defined twice — "Ongoing ticket ageing" (§4.3) and "One-way sync" (§4.4) — because the rev 4 renumbering shifted §4.4 by the wrong amount. §4.4 is now FR-25–32 and §4.5 is FR-33–35. All downstream citations in the design doc, traceability matrix, module specs, and plan were corrected; several had also been carrying pre-rev-4 numbers. Total: 35 requirements, no gaps, no duplicates. |
 | **4** | **Corrected to the department's real process.** Status ENUM rebuilt to Open / Ongoing / Closed; Pending, Assigned, In Progress, Resolved and Voided removed — they were never used. Ticket creation may now enter any status directly, defaulting to Closed (FR-2). `assigned_at` and `resolved_at` replaced by `ongoing_at` and `closed_at` (FR-7). Closed made terminal, no reopen (FR-8). Delete/void path removed (FR-9). `assigned_to` reclassified as a record of who handled the concern rather than a workflow stage. Audit actions RESOLVE and VOID removed. First-time fix rate (FR-23) and Ongoing ageing (FR-24) added — both newly answerable once the process was understood. OPEN-2 narrowed to dashboard access only; the closing question is settled. Requirements renumbered from FR-8 onward. |
 | 3 | User, Department, and MainIssueCategory entities defined. `main_issue` and `department` changed from free text to foreign keys (FR-18, FR-20). Lifecycle timestamps added (FR-21). `Voided` status and VOID audit action added (FR-2). Inline employee creation restored (FR-13–FR-15). TicketSequence re-keyed to `scope_key` (OPEN-1). SyncOutbox added (FR-29–FR-31). Sync direction stated explicitly (FR-25). Sheet ordering documented (FR-28). Permission matrix added (§3.3). Malformed tables in §6, §7, §9 repaired. Open Items Register added. |

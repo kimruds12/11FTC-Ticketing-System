@@ -20,7 +20,7 @@ blurring them is a real modelling bug. See [ADR-0013](../adr/0013-user-provision
 | Who | IT department staff who operate the system | Any company employee who **reports** a concern |
 | Log in? | **Yes** — Supabase Auth | **Never** — no account, no auth |
 | Has | email, **role**, `is_active`, a Supabase auth identity | name, department, `is_active` — **no email, no role** |
-| On a ticket | `created_by`, `assigned_to` | `employee_id` (the reporter) |
+| On a ticket | `created_by`, `updated_by` | `employee_id` (the reporter) |
 | Created via | **Admin-invite** (service_role) / SQL bootstrap | Inline resolve-or-create (M4) **or** admin directory CRUD |
 
 > A System User is **not** an Employee and vice versa. "Registering a user" (an account
@@ -70,7 +70,7 @@ Google, but only pre-authorized emails can use the app. See
   non-allowlisted emails. None are required for correctness — the `no-user-row` 403 already
   denies them — but they shrink the public surface.
 - **Deactivation:** set `is_active = false` (M1 then rejects them even with a valid JWT).
-  Never delete a user — `created_by` / `assigned_to` FKs must keep resolving.
+  Never delete a user — `created_by` / `updated_by` FKs must keep resolving.
 
 > **Linkage (DECIDED, ADR-0013):** the invite keys on `email`; on first Google sign-in the
 > matching session's `sub` is bound into `public.users.auth_uid` (added in M1's Step 0

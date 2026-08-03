@@ -46,6 +46,9 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      # Server-side calls go to the api by service name; the browser uses the build-time
+      # NEXT_PUBLIC_API_URL above. See apps/web/src/services/server.ts.
+      API_INTERNAL_URL: http://api:3001/api/v1
     ports:
       - "3000:3000"
     depends_on:

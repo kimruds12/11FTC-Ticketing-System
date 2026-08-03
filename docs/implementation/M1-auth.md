@@ -60,8 +60,9 @@ routes out explicitly.
 
 ## Invariants (from the spec — do not violate)
 
-1. **`public.users` is the User entity, not `auth.users`.** `assigned_to`, `created_by`,
-   `updated_by` FK to *our* table. The allowlist row is created by **email** (M2), because
+1. **`public.users` is the User entity, not `auth.users`.** `created_by` and
+   `updated_by` FK to *our* table. Ticket ASSIGNMENT does not — it goes through
+   `technicians`, which need no account (ADR-0017). The allowlist row is created by **email** (M2), because
    the Supabase `sub` doesn't exist until the invitee's first Google login.
    **Linkage (DECIDED, ADR-0013):** match by the JWT `email` claim and **bind `auth_uid` on
    first login** — the first matching-email session stores its `sub` into a new

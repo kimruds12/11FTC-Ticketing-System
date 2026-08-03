@@ -61,6 +61,10 @@ multi-statement transactions, which breaks FR-31.
 7. **Audit at the application layer, one row per changed field**, in the same
    transaction. Not DB triggers — triggers can't see `updated_by`.
 8. **Denormalize only at the sheet boundary.** IDs stay in Postgres.
+9. **Who handled a ticket is a technician directory, never a user account** (ADR-0017).
+   One field, `assignees: string[]` (names), resolve-or-created inside the encode
+   transaction; rows live in `ticket_assignees`. Two-technician work is ~21% of the real
+   history — do not collapse it back to a single FK. See `.claude/rules/domain.md`.
 
 ## Rules for contributors (human or agent)
 
