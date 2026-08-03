@@ -1,21 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import type { DatePoint } from "@11ftc/shared";
+import type { DatePoint, Granularity } from "@11ftc/shared";
+import { bucketLabel } from "./period";
 
 /**
- * FR-21 — resolution trend: problems solved per day (bucketed by closed_at). SVG line scaled
- * to the busiest day in the window.
+ * FR-21 — resolution trend: problems solved per bucket (always bucketed by `closed_at`, never
+ * by encode date). SVG line scaled to the busiest bucket in the window.
  */
-export default function ResolutionTrendChart({ data = [] }: { data?: DatePoint[] }) {
+export default function ResolutionTrendChart({
+  data = [],
+  granularity = "day",
+  emptyHint,
+}: {
+  data?: DatePoint[];
+  granularity?: Granularity;
+  emptyHint?: string;
+}) {
   const [hovered, setHovered] = useState<number | null>(null);
+
+  const perBucket =
+    granularity === "month" ? "per month" : granularity === "week" ? "per week" : "per day";
 
   if (data.length === 0) {
     return (
       <div className="w-full">
         <h3 className="text-sm font-bold text-gray-900">Resolution Trend</h3>
+        {/* Says WHICH window is empty — otherwise a quiet week is indistinguishable from a
+            broken dashboard, which is exactly how this looked before. */}
         <p className="text-xs text-gray-400 font-medium py-10 text-center">
-          No resolved tickets in this period.
+          {emptyHint ?? "No resolved tickets in this period."}
         </p>
       </div>
     );
@@ -47,7 +61,9 @@ export default function ResolutionTrendChart({ data = [] }: { data?: DatePoint[]
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-sm font-bold text-gray-900">Resolution Trend</h3>
-          <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Problems solved per day</p>
+          <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
+            Problems solved {perBucket}
+          </p>
         </div>
       </div>
 
@@ -97,7 +113,9 @@ export default function ResolutionTrendChart({ data = [] }: { data?: DatePoint[]
             className="absolute bg-slate-900 text-white rounded-lg p-2.5 shadow-xl text-xs z-20 border border-slate-800 pointer-events-none"
             style={{ left: `${(hovered / Math.max(1, data.length - 1)) * 85}%`, top: "6px" }}
           >
-            <p className="font-bold text-[10px] text-gray-400">{data[hovered]!.date}</p>
+            <p className="font-bold text-[10px] text-gray-400">
+              {bucketLabel(data[hovered]!.date, granularity)}
+            </p>
             <p className="font-semibold mt-1 text-red-400">Resolved: {data[hovered]!.count}</p>
           </div>
         )}

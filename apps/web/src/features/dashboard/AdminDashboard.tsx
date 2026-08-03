@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type {
-  AnalyticsWindow,
   CountPoint,
   DatePoint,
   FirstTimeFixDto,
+  Granularity,
   StatusCounts,
 } from "@11ftc/shared";
 import { browserApi } from "@/services/browser";
@@ -13,12 +13,21 @@ import { analyticsService } from "@/services/analytics.service";
 import StatCard from "./StatCard";
 import ResolutionTrendChart from "./ResolutionTrendChart";
 import ByDepartmentChart from "./ByDepartmentChart";
+import ByTechnicianChart from "./ByTechnicianChart";
 import TopIssuesChart from "./TopIssuesChart";
+import {
+  GRANULARITIES,
+  RANGES,
+  describeWindow,
+  windowFor,
+  type RangeKey,
+} from "./period";
 
 interface DashData {
   status: StatusCounts;
   solved: DatePoint[];
   byDept: CountPoint[];
+  byTech: CountPoint[];
   byCat: CountPoint[];
   ftf: FirstTimeFixDto;
 }
@@ -27,35 +36,30 @@ const EMPTY: DashData = {
   status: { open: 0, ongoing: 0, closed: 0, total: 0 },
   solved: [],
   byDept: [],
+  byTech: [],
   byCat: [],
   ftf: { closed: 0, firstTimeFix: 0, rate: 0 },
 };
 
-function windowFor(period: string): AnalyticsWindow {
-  const today = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  const to = fmt(today);
-  if (period === "today") return { from: to, to };
-  if (period === "week") {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 6);
-    return { from: fmt(d), to };
-  }
-  if (period === "month") {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 29);
-    return { from: fmt(d), to };
-  }
-  if (period === "year") return { from: `${today.getFullYear()}-01-01`, to };
-  return {}; // overall
-}
-
-/** IT Administrator dashboard — live analytics (M9) over the selected period. */
+/**
+ * IT Administrator dashboard — live analytics (M9) over the selected range and granularity.
+ *
+ * The default is ALL TIME, deliberately: the ticket history starts well before today, so a
+ * "last 7 days" default renders every chart empty and reads as a broken dashboard.
+ */
 export default function AdminDashboard() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [periodFilter, setPeriodFilter] = useState("overall");
+  const [range, setRange] = useState<RangeKey>("all");
+  const [granularity, setGranularity] = useState<Granularity>("month");
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [data, setData] = useState<DashData | null>(null);
+
+  const analyticsWindow = useMemo(
+    () => windowFor(range, granularity),
+    [range, granularity],
+  );
+  const windowLabel = describeWindow(analyticsWindow);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids SSR/client time mismatch
@@ -68,21 +72,28 @@ export default function AdminDashboard() {
     setRefreshing(true);
     try {
       const svc = analyticsService(browserApi());
-      const w = windowFor(periodFilter);
-      const [status, solved, byDept, byCat, ftf] = await Promise.all([
+      const w = analyticsWindow;
+      const [status, solved, byDept, byTech, byCat, ftf] = await Promise.all([
         svc.status(),
         svc.solved(w),
         svc.byDepartment(w),
+        svc.byTechnician(w),
         svc.byCategory(w),
         svc.firstTimeFix(w),
       ]);
-      setData({ status, solved, byDept, byCat, ftf });
-    } catch {
+      setData({ status, solved, byDept, byTech, byCat, ftf });
+      setLoadError(null);
+    } catch (e) {
+      // SURFACE it. This used to swallow the error and render zeros, which made a total
+      // failure (CORS blocking every call, a 500 from one endpoint) look identical to "there
+      // is no data for this period" — the single reason the dashboard stayed mysteriously
+      // blank instead of saying what was wrong.
       setData(EMPTY);
+      setLoadError(e instanceof Error ? e.message : "Could not reach the analytics API.");
     } finally {
       setRefreshing(false);
     }
-  }, [periodFilter]);
+  }, [analyticsWindow]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate fetch on mount / period change
@@ -127,21 +138,48 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Period Filter + Actions Row ──────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-          {["overall", "today", "week", "month", "year"].map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setPeriodFilter(opt)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 capitalize ${
-                periodFilter === opt ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
+      {/* ── Range + Granularity + Actions Row ────────────
+          Two independent controls: WHICH tickets (range) and HOW they're bucketed
+          (granularity). Changing the range moves granularity to whatever reads best for that
+          span, but the user can then override it. */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => {
+                  setRange(r.key);
+                  setGranularity(r.defaultGranularity);
+                }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
+                  range === r.key
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+            {GRANULARITIES.map((g) => (
+              <button
+                key={g.key}
+                onClick={() => setGranularity(g.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
+                  granularity === g.key
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
         </div>
+
         <div className="flex items-center gap-3.5">
           <button
             onClick={() => void load()}
@@ -156,6 +194,12 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+
+      {loadError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          Analytics could not be loaded: {loadError}
+        </div>
+      )}
       {/* ── Stat Cards (live, M9 /analytics/status + first-time-fix) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Open Tickets" value={stat(data?.status.open)} badge="Awaiting" badgeColor="bg-blue-50 text-blue-700 border border-blue-200" iconBg="bg-blue-50"
@@ -173,7 +217,11 @@ export default function AdminDashboard() {
       {/* ── Charts Row ───────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="card p-5 lg:col-span-2 space-y-4">
-          <ResolutionTrendChart data={data?.solved} />
+          <ResolutionTrendChart
+            data={data?.solved}
+            granularity={granularity}
+            emptyHint={`No tickets were closed ${windowLabel}.`}
+          />
         </div>
         <div className="card p-5 space-y-4">
           <div>
@@ -196,12 +244,15 @@ export default function AdminDashboard() {
 
         <div className="card p-5 space-y-4">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Google Sheets Sync</h2>
-            <p className="text-xs text-gray-400 font-medium mt-0.5">M7 outbox → M8 worker (live logs land with the worker)</p>
+            <h2 className="text-base font-bold text-gray-900">By Technician</h2>
+            <p className="text-xs text-gray-400 font-medium mt-0.5">
+              Tickets handled per person (FR-19)
+            </p>
           </div>
-          <p className="text-xs text-gray-400 font-medium py-6 text-center">
-            Sync activity appears here once the worker (M8) is running.
-          </p>
+          <ByTechnicianChart
+            data={data?.byTech}
+            emptyHint={`No tickets were handled ${windowLabel}.`}
+          />
         </div>
       </div>
     </div>

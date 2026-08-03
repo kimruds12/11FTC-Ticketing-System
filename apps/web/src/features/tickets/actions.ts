@@ -3,16 +3,22 @@ import { revalidatePath } from "next/cache";
 import { serverApi } from "@/services/server";
 import { ticketsService } from "@/services/tickets.service";
 import { AppError } from "@/services/errors";
-import type { TicketStatus } from "@11ftc/shared";
+import type {
+  AssignTicketDto,
+  CloseTicketDto,
+  EncodeTicketDto,
+  TicketDto,
+  UpdateTicketDto,
+} from "@11ftc/shared";
 
 /**
  * Server Actions for tickets — the mutation door for forms (architecture.md, pattern 2).
- * They TRIGGER the api services and revalidate; they carry NO business logic. The API
- * (M5) enforces the state machine, numbering, audit, and outbox in one transaction; these
- * actions just shape the call and refresh the affected routes.
+ * They TRIGGER the api services and revalidate; they carry NO business logic. The API (M5)
+ * enforces the state machine, numbering, audit, and outbox in one transaction; these actions
+ * just shape the call and refresh the affected routes.
  *
- * Payloads are `unknown` until the M5 DTOs land in @11ftc/shared — do not fork the
- * write-contract into the frontend.
+ * A 409 from the API means the state machine refused the transition (e.g. anything out of
+ * Closed, which is terminal per FR-8). That surfaces as `error` here, not as a thrown page.
  */
 export type ActionResult<T = void> =
   | { ok: true; data: T }
@@ -25,11 +31,20 @@ function fail(error: unknown): { ok: false; error: string; status: number } {
   return { ok: false, error: "Unexpected error", status: 0 };
 }
 
-export async function encodeTicketAction(payload: unknown): Promise<ActionResult> {
+/** Refresh both the queue and the ticket's own page after a mutation. */
+function revalidateTicket(id?: string) {
+  revalidatePath("/tickets");
+  revalidatePath("/dashboard");
+  if (id) revalidatePath(`/tickets/${id}`);
+}
+
+export async function encodeTicketAction(
+  payload: EncodeTicketDto,
+): Promise<ActionResult<TicketDto>> {
   try {
-    await ticketsService(serverApi()).encode(payload);
-    revalidatePath("/tickets");
-    return { ok: true, data: undefined };
+    const ticket = await ticketsService(serverApi()).encode(payload);
+    revalidateTicket(ticket.ticketId);
+    return { ok: true, data: ticket };
   } catch (error) {
     return fail(error);
   }
@@ -37,27 +52,48 @@ export async function encodeTicketAction(payload: unknown): Promise<ActionResult
 
 export async function updateTicketAction(
   id: string,
-  payload: unknown,
-): Promise<ActionResult> {
+  payload: UpdateTicketDto,
+): Promise<ActionResult<TicketDto>> {
   try {
-    await ticketsService(serverApi()).update(id, payload);
-    revalidatePath("/tickets");
-    revalidatePath(`/tickets/${id}`);
-    return { ok: true, data: undefined };
+    const ticket = await ticketsService(serverApi()).update(id, payload);
+    revalidateTicket(id);
+    return { ok: true, data: ticket };
   } catch (error) {
     return fail(error);
   }
 }
 
-export async function transitionTicketAction(
+export async function assignTicketAction(
   id: string,
-  next: TicketStatus,
-): Promise<ActionResult> {
+  payload: AssignTicketDto,
+): Promise<ActionResult<TicketDto>> {
   try {
-    await ticketsService(serverApi()).transition(id, next);
-    revalidatePath("/tickets");
-    revalidatePath(`/tickets/${id}`);
-    return { ok: true, data: undefined };
+    const ticket = await ticketsService(serverApi()).assign(id, payload);
+    revalidateTicket(id);
+    return { ok: true, data: ticket };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function markOngoingAction(id: string): Promise<ActionResult<TicketDto>> {
+  try {
+    const ticket = await ticketsService(serverApi()).markOngoing(id);
+    revalidateTicket(id);
+    return { ok: true, data: ticket };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function closeTicketAction(
+  id: string,
+  payload: CloseTicketDto = {},
+): Promise<ActionResult<TicketDto>> {
+  try {
+    const ticket = await ticketsService(serverApi()).close(id, payload);
+    revalidateTicket(id);
+    return { ok: true, data: ticket };
   } catch (error) {
     return fail(error);
   }

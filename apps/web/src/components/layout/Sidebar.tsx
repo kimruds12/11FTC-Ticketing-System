@@ -47,7 +47,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
       visible: true,
     },
     {
-      label: "Employee Management",
+      label: "Directory",
       href: "/employees",
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

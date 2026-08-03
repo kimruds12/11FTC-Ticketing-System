@@ -1,12 +1,26 @@
 import { serverApi } from "@/services/server";
 import { usersService } from "@/services/users.service";
-import UserDirectoryClient from "@/features/employees/UserDirectoryClient";
+import { employeesService } from "@/services/employees.service";
+import { techniciansService } from "@/services/technicians.service";
+import { lookupsService } from "@/services/lookups.service";
+import DirectoryClient from "@/features/employees/DirectoryClient";
 import type { User } from "@/features/employees/UserTable";
-import { UserRole, type UserDto } from "@11ftc/shared";
+import {
+  UserRole,
+  type DepartmentDto,
+  type EmployeeDto,
+  type TechnicianDto,
+  type UserDto,
+} from "@11ftc/shared";
 
 /**
- * User Directory (M2) — System Users (accounts). Server-fetches the allowlist from /users
- * (admin-only) and maps to the table's view shape; interactive bits live in the client shell.
+ * Directory (M2 + ADR-0017). This page used to list ONLY sign-in accounts while being called
+ * "Employee Management" — the actual employee directory had a complete API and no UI at all.
+ * It now surfaces all three populations: employees (reporters), technicians (handlers), and
+ * system users (accounts).
+ *
+ * Inactive rows are included deliberately: nothing is deleted (FR-9), so a retired person must
+ * stay visible or their historical tickets stop making sense.
  */
 const AVATAR_COLORS = [
   "bg-red-500",
@@ -45,13 +59,33 @@ function toRow(u: UserDto): User {
   };
 }
 
-export default async function UserManagementPage() {
-  let users: UserDto[] = [];
-  try {
-    users = await usersService(serverApi()).list();
-  } catch {
-    // Non-admins get 403 from /users; render an empty directory rather than crash.
-    users = [];
-  }
-  return <UserDirectoryClient initialUsers={users.map(toRow)} />;
+export default async function DirectoryPage() {
+  const api = serverApi();
+
+  // Each list degrades independently: /users is admin-only and 403s for IT Staff, but that
+  // must not blank out the employee and technician tabs they legitimately need.
+  const [employees, technicians, users, departments] = await Promise.all([
+    employeesService(api)
+      .list(true)
+      .catch((): EmployeeDto[] => []),
+    techniciansService(api)
+      .list(true)
+      .catch((): TechnicianDto[] => []),
+    usersService(api)
+      .list()
+      .catch((): UserDto[] => []),
+    lookupsService(api)
+      .listDepartments()
+      .catch((): DepartmentDto[] => []),
+  ]);
+
+  return (
+    <DirectoryClient
+      employees={employees}
+      technicians={technicians}
+      users={users.filter((u) => u.isActive)}
+      userRows={users.map(toRow)}
+      departments={departments.filter((d) => d.isActive)}
+    />
+  );
 }
