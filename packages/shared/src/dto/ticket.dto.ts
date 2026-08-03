@@ -1,6 +1,33 @@
 import { z } from "zod";
 import { TicketStatus } from "../enums.js";
 import type { AuditEntryDto } from "./audit.dto.js";
+import type { TicketAssigneeDto } from "./technician.dto.js";
+
+/**
+ * WHO HANDLED THE TICKET — one field, NAMES not IDs (ADR-0017).
+ *
+ * Names rather than UUIDs is the whole point: the API resolve-or-creates each technician
+ * inside the encode transaction, exactly as it already does for `employeeName`. So picking
+ * "Patrick" from the list and typing a technician who has never been recorded before are
+ * the same request, and neither needs an admin to provision anything first.
+ *
+ * An array because two-technician work is 21% of the real history ("Kim/Paul"). Order is
+ * preserved — it becomes the sheet's column G verbatim.
+ */
+const assigneeNamesSchema = z
+  .array(z.string().trim().min(1).max(120))
+  .max(5)
+  .default([])
+  .transform((names) => {
+    // Same person typed twice (or in two casings) is one assignee, not two join rows.
+    const seen = new Set<string>();
+    return names.filter((n) => {
+      const key = n.trim().toLowerCase().replace(/\s+/g, " ");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  });
 
 const statusSchema = z.enum([
   TicketStatus.OPEN,
@@ -22,7 +49,7 @@ export const encodeTicketSchema = z.object({
   mainIssueId: z.string().uuid(),
   concern: z.string().trim().min(1),
   status: statusSchema.default(TicketStatus.CLOSED),
-  assignedTo: z.string().uuid().nullish(),
+  assignees: assigneeNamesSchema,
   remarks: z.string().trim().max(2000).nullish(),
 });
 export type EncodeTicketDto = z.infer<typeof encodeTicketSchema>;
@@ -37,8 +64,9 @@ export const updateTicketSchema = z
   .refine((d) => Object.keys(d).length > 0, { message: "nothing to update" });
 export type UpdateTicketDto = z.infer<typeof updateTicketSchema>;
 
+/** Re-assignment (FR-9). Sends the FULL list — an empty array means "unassigned". */
 export const assignTicketSchema = z.object({
-  assignedTo: z.string().uuid().nullable(),
+  assignees: assigneeNamesSchema,
 });
 export type AssignTicketDto = z.infer<typeof assignTicketSchema>;
 
@@ -59,8 +87,8 @@ export interface TicketDto {
   department: string | null;
   mainIssueId: string;
   mainIssue: string | null;
-  assignedTo: string | null;
-  assignedToName: string | null;
+  /** Ordered; render with `formatAssignees` so the UI and the sheet agree. */
+  assignees: TicketAssigneeDto[];
   createdBy: string;
   ongoingAt: string | null;
   closedAt: string | null;
@@ -80,7 +108,8 @@ export const ticketListQuerySchema = z.object({
   departmentId: z.string().uuid().optional(),
   mainIssueId: z.string().uuid().optional(),
   employeeId: z.string().uuid().optional(),
-  assignedTo: z.string().uuid().optional(),
+  /** Matches a ticket if this technician is ONE of its assignees. */
+  technicianId: z.string().uuid().optional(),
   q: z.string().trim().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),

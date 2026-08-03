@@ -1,15 +1,35 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, count, desc, eq, gte, ilike, lte, or } from "drizzle-orm";
-import { alias, type PgUpdateSetSource } from "drizzle-orm/pg-core";
+import { and, count, desc, eq, exists, gte, ilike, lte, or, sql } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { schema, type Db, type Tx } from "@11ftc/db";
-import type { TicketDto, TicketListQuery, TicketListResult } from "@11ftc/shared";
+import type {
+  TicketAssigneeDto,
+  TicketDto,
+  TicketListQuery,
+  TicketListResult,
+} from "@11ftc/shared";
 import { DATABASE } from "../database/database.constants.js";
 
 export type TicketRow = typeof schema.tickets.$inferSelect;
 export type NewTicket = typeof schema.tickets.$inferInsert;
 export type TicketPatch = PgUpdateSetSource<typeof schema.tickets>;
 
-const assignedUser = alias(schema.users, "assigned_user");
+/**
+ * Assignees as an ordered JSON array in the same round trip as the ticket (ADR-0017).
+ *
+ * A LEFT JOIN would multiply ticket rows by assignee count and silently break `limit`/`offset`
+ * — a page of 50 would return fewer than 50 tickets as soon as one had two technicians. The
+ * correlated subquery keeps the result strictly one row per ticket.
+ */
+const assigneesJson = sql<TicketAssigneeDto[]>`(
+  select coalesce(
+    json_agg(json_build_object('technicianId', tc.technician_id, 'name', tc.name)
+             order by ta.position),
+    '[]'::json)
+    from ${schema.ticketAssignees} ta
+    join ${schema.technicians} tc on tc.technician_id = ta.technician_id
+   where ta.ticket_id = ${schema.tickets.ticketId}
+)`;
 
 /**
  * All Drizzle access for tickets. Writes take the caller's `tx` (M5 is the single
@@ -63,8 +83,7 @@ export class TicketRepository {
         department: schema.departments.name,
         mainIssueId: schema.tickets.mainIssueId,
         mainIssue: schema.mainIssueCategory.label,
-        assignedTo: schema.tickets.assignedTo,
-        assignedToName: assignedUser.fullName,
+        assignees: assigneesJson,
         createdBy: schema.tickets.createdBy,
         ongoingAt: schema.tickets.ongoingAt,
         closedAt: schema.tickets.closedAt,
@@ -84,7 +103,6 @@ export class TicketRepository {
         schema.mainIssueCategory,
         eq(schema.tickets.mainIssueId, schema.mainIssueCategory.mainIssueId),
       )
-      .leftJoin(assignedUser, eq(schema.tickets.assignedTo, assignedUser.userId))
       .$dynamic();
   }
 
@@ -103,7 +121,22 @@ export class TicketRepository {
     if (query.dateTo) conditions.push(lte(schema.tickets.date, query.dateTo));
     if (query.mainIssueId) conditions.push(eq(schema.tickets.mainIssueId, query.mainIssueId));
     if (query.employeeId) conditions.push(eq(schema.tickets.employeeId, query.employeeId));
-    if (query.assignedTo) conditions.push(eq(schema.tickets.assignedTo, query.assignedTo));
+    if (query.technicianId) {
+      // EXISTS, not a join: a ticket with two technicians must appear ONCE, not twice.
+      conditions.push(
+        exists(
+          this.db
+            .select({ one: sql`1` })
+            .from(schema.ticketAssignees)
+            .where(
+              and(
+                eq(schema.ticketAssignees.ticketId, schema.tickets.ticketId),
+                eq(schema.ticketAssignees.technicianId, query.technicianId),
+              ),
+            ),
+        ),
+      );
+    }
     if (query.departmentId) {
       conditions.push(eq(schema.employees.departmentId, query.departmentId));
     }
@@ -148,8 +181,7 @@ type EnrichedRow = {
   department: string | null;
   mainIssueId: string;
   mainIssue: string | null;
-  assignedTo: string | null;
-  assignedToName: string | null;
+  assignees: TicketAssigneeDto[];
   createdBy: string;
   ongoingAt: Date | string | null;
   closedAt: Date | string | null;
@@ -174,8 +206,7 @@ function toDto(r: EnrichedRow): TicketDto {
     department: r.department,
     mainIssueId: r.mainIssueId,
     mainIssue: r.mainIssue,
-    assignedTo: r.assignedTo,
-    assignedToName: r.assignedToName,
+    assignees: r.assignees ?? [],
     createdBy: r.createdBy,
     ongoingAt: iso(r.ongoingAt),
     closedAt: iso(r.closedAt),

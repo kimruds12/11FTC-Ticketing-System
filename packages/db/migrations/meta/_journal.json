@@ -22,6 +22,27 @@
       "when": 1785156683684,
       "tag": "0002_curvy_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785413628162,
+      "tag": "0003_sharp_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785758297152,
+      "tag": "0004_add_technicians",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785758697621,
+      "tag": "0005_drop_ticket_assigned_columns",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import { AuthModule } from "./auth/auth.module.js";
 import { MasterDataModule } from "./master-data/master-data.module.js";
 import { NumberingModule } from "./numbering/numbering.module.js";
 import { EmployeeModule } from "./employee/employee.module.js";
+import { TechnicianModule } from "./technician/technician.module.js";
 import { TicketModule } from "./ticket/ticket.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { OutboxModule } from "./outbox/outbox.module.js";
@@ -32,7 +33,8 @@ import { AnalyticsModule } from "./analytics/analytics.module.js";
     AuthModule, // M1
     MasterDataModule, // M2
     NumberingModule, // M3
-    EmployeeModule, // M4
+    EmployeeModule, // M4 — reporters
+    TechnicianModule, // M4 — handlers (ADR-0017), same resolve-or-create shape
     TicketModule, // M5 — the transaction boundary
     AuditModule, // M6
     OutboxModule, // M7

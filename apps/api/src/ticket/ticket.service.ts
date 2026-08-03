@@ -8,6 +8,7 @@ import {
 import { eq } from "drizzle-orm";
 import { schema, type Db, type Tx } from "@11ftc/db";
 import {
+  formatAssignees,
   TicketStatus,
   type AssignTicketDto,
   type AuthContext,
@@ -22,6 +23,7 @@ import {
 import { DATABASE } from "../database/database.constants.js";
 import { NumberingService } from "../numbering/numbering.service.js";
 import { EmployeeService } from "../employee/employee.service.js";
+import { TechnicianService } from "../technician/technician.service.js";
 import { AuditService, type FieldChange } from "../audit/audit.service.js";
 import { OutboxService, type SheetRowPayload } from "../outbox/outbox.service.js";
 import { TicketRepository, type TicketPatch, type TicketRow } from "./ticket.repository.js";
@@ -54,6 +56,7 @@ export class TicketService {
     private readonly repo: TicketRepository,
     private readonly numbering: NumberingService,
     private readonly employee: EmployeeService,
+    private readonly technician: TechnicianService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
   ) {}
@@ -93,7 +96,6 @@ export class TicketService {
         employeeId: employee.employeeId,
         mainIssueId: input.mainIssueId,
         concern: input.concern,
-        assignedTo: input.assignedTo ?? null,
         createdBy: actor.userId,
         status: input.status,
         remarks: input.remarks ?? null,
@@ -103,10 +105,19 @@ export class TicketService {
       tx,
     );
 
+    // Technicians resolve-or-create inside THIS tx, exactly like the employee above — so a
+    // name typed for the first time and the ticket that introduced it commit together.
+    const assignees = await this.technician.setAssignees(row.ticketId, input.assignees, tx);
+
     await this.audit.log(
       "CREATE",
       row.ticketId,
-      [{ fieldName: "status", previousValue: null, newValue: row.status }],
+      [
+        { fieldName: "status", previousValue: null, newValue: row.status },
+        ...(assignees.length
+          ? [field("assignees", null, formatAssignees(assignees))]
+          : []),
+      ],
       actor,
       tx,
     ); // M6
@@ -154,17 +165,19 @@ export class TicketService {
     actor: AuthContext,
   ): Promise<TicketDto> {
     await this.db.transaction(async (tx) => {
-      const current = await this.lock(ticketId, tx);
-      if (current.assignedTo === input.assignedTo) return; // no change
-      const updated = await this.repo.update(
-        ticketId,
-        { assignedTo: input.assignedTo, updatedAt: new Date() },
-        tx,
-      );
+      await this.lock(ticketId, tx);
+      // Compare the RENDERED list, not the raw input: "Kim/Paul" typed as "kim/paul" is not a
+      // change, and must not produce an audit row or wake the sheet writer.
+      const before = formatAssignees(await this.technician.assigneesOf(ticketId, tx));
+      const assignees = await this.technician.setAssignees(ticketId, input.assignees, tx);
+      const after = formatAssignees(assignees);
+      if (before === after) return;
+
+      const updated = await this.repo.update(ticketId, { updatedAt: new Date() }, tx);
       await this.audit.log(
         "ASSIGN",
         ticketId,
-        [field("assigned_to", current.assignedTo, input.assignedTo)],
+        [field("assignees", before, after)],
         actor,
         tx,
       );
@@ -291,15 +304,11 @@ export class TicketService {
       .from(schema.mainIssueCategory)
       .where(eq(schema.mainIssueCategory.mainIssueId, row.mainIssueId))
       .limit(1);
-    let assignedToName: string | null = null;
-    if (row.assignedTo) {
-      const u = await tx
-        .select({ fullName: schema.users.fullName })
-        .from(schema.users)
-        .where(eq(schema.users.userId, row.assignedTo))
-        .limit(1);
-      assignedToName = u[0]?.fullName ?? null;
-    }
+    // Column G is the assignee list joined with "/" — the exact format the team already
+    // writes ("Kim/Paul"). One code path now, whether one technician or three (ADR-0017).
+    const assignedToName = formatAssignees(
+      await this.technician.assigneesOf(row.ticketId, tx),
+    );
     return {
       ticketNo: row.ticketNo,
       date: row.date,
