@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "comment": "Typechecks the SPEC files, which tsconfig.json deliberately excludes so they never reach dist/. Without this they are invisible to `tsc`: a spec that constructs a service with the wrong arity, or passes a DTO that has since changed shape, compiles-by-omission and only fails when the suite actually runs — and `pnpm test` skips the concurrency specs entirely. In a repo where 'the test is the specification' (see .claude/rules/numbering.md), the specification must typecheck. `lib` adds DOM purely for the WebCrypto types (CryptoKey) the jose-based token-verifier spec uses; the runtime is Node and nothing in src/ touches the DOM.",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals", "node"],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

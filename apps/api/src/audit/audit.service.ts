@@ -43,9 +43,22 @@ export class AuditService {
 
   /** Immutable history for a ticket, newest first — served via M5's `GET /tickets/:id`. */
   async history(ticketId: string): Promise<AuditEntryDto[]> {
+    // The actor's NAME is resolved here, at the boundary. The UI used to look it up against
+    // the admin-only `/users` list, so IT Staff saw every entry as "System user" — the
+    // history was legible only to admins. `updated_by` stays the canonical id.
     const rows = await this.db
-      .select()
+      .select({
+        auditLogId: schema.auditLog.auditLogId,
+        action: schema.auditLog.action,
+        fieldName: schema.auditLog.fieldName,
+        previousValue: schema.auditLog.previousValue,
+        newValue: schema.auditLog.newValue,
+        updatedBy: schema.auditLog.updatedBy,
+        updatedByName: schema.users.fullName,
+        updatedAt: schema.auditLog.updatedAt,
+      })
       .from(schema.auditLog)
+      .leftJoin(schema.users, eq(schema.auditLog.updatedBy, schema.users.userId))
       .where(eq(schema.auditLog.ticketId, ticketId))
       .orderBy(desc(schema.auditLog.updatedAt));
     return rows.map((r) => ({
@@ -55,6 +68,7 @@ export class AuditService {
       previousValue: r.previousValue,
       newValue: r.newValue,
       updatedBy: r.updatedBy,
+      updatedByName: r.updatedByName,
       updatedAt: new Date(r.updatedAt).toISOString(),
     }));
   }

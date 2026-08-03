@@ -34,6 +34,20 @@ export const envSchema = z.object({
   TICKET_NUMBER_SCOPE: z.enum(["date", "year"]).default("year"),
 
   API_PORT: z.coerce.number().int().positive().default(3001),
+
+  /**
+   * Browser origins allowed to call this API (comma-separated).
+   *
+   * The web app's Server Components talk to the API server-to-server and are unaffected by
+   * CORS — but anything the BROWSER fetches (the dashboard's live analytics, the employee and
+   * technician pickers) is blocked without this. Failure is invisible server-side: the request
+   * never arrives, so there is nothing in the API log, and the page just renders empty.
+   *
+   * An allowlist, never `*`: these endpoints are authenticated with a bearer token, and a
+   * wildcard would let any site on the internet make credentialed calls on a signed-in user's
+   * behalf.
+   */
+  CORS_ORIGINS: z.string().default("http://localhost:3000"),
 });
 
 export type Env = z.infer<typeof envSchema>;
