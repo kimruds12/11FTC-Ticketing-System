@@ -182,6 +182,49 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 - FR-34. Audit entries are written in the same transaction as the change they describe.
 - FR-35. Audit entries are immutable. No user may edit or delete them.
 
+### 4.6 Report Generation
+- FR-36. Produce a **cross-tabulation of ticket counts: departments down, periods across**, over a chosen period range, at daily / weekly / monthly granularity, optionally filtered to one department and/or one main-issue category. Row, column, and grand totals are included, and the grand total equals the number of tickets in the range.
+- FR-37. The selectable period range is **derived from the encoded data**, never a fixed list: a period with no tickets is not offered, and a period with tickets is never omitted.
+- FR-38. A generated report can be **exported as a spreadsheet-readable file and printed as a document**, both carrying the period and filters that produced it.
+
+> **Why this section exists (rev 6).** A "Generate Reports" screen was built during the
+> UI phase against no requirement, entirely from hardcoded figures, and carried a badge
+> claiming the numbers were synced with Google Sheets. The figures were invented and the
+> department list did not match the real one. Rather than delete the screen, its purpose
+> was settled and written down here.
+>
+> **The distinction from §4.3 is deliberate.** The dashboard answers *how are we doing
+> right now* — live, operational, read at a glance. A report answers *what happened over
+> this period* — fixed, filtered, and taken out of the system to be handed to someone.
+> The dashboard has no cross-tab and needs none; a report is a document and therefore
+> needs a stable shape, which is why every active department occupies a row even when its
+> count is zero.
+>
+> **FR-37 exists because the mock-up made the failure concrete.** Its month list was
+> written by hand and would have offered months with no data and hidden months with data,
+> silently, from the first January onwards.
+>
+> **FR-38 does not require PDF generation.** Print-to-PDF is the browser's job; a report
+> laid out a second time inside a PDF library diverges from the one on screen the first
+> time a column changes. "What prints is what you looked at" is the requirement.
+
+### 4.7 Bulk Encoding
+- FR-39. Encode **several tickets in one submission**, sharing the fields a batch has in common (date, handler, status) and varying only what differs per ticket. The batch is recorded **atomically**: either every ticket in it exists, or none does.
+
+> **This is the requirement the product's purpose implies.** §2 states the system exists to
+> reduce the manual effort of maintaining the ticket log; the department fixes concerns first
+> and writes them up afterwards, usually several at a time from notes. Encoding those one at
+> a time, retyping the same date and the same technician on every one, *is* the manual work
+> being removed. A form that only ever accepts one ticket cannot satisfy the purpose.
+>
+> **Atomicity is not a nicety here, it follows from FR-9.** Nothing can be deleted, so a batch
+> that half-succeeded could not be undone: the encoder would be left guessing which rows
+> landed, and the safe-looking recovery — re-entering what appears to be missing — produces
+> duplicates. One rejected row must therefore reject the batch and write nothing.
+>
+> **Numbering gaps from a rejected batch are accepted**, consistent with the numbering rule
+> that a gap is cosmetic while a duplicate is corruption.
+
 ## 5. Ticket Entity
 
 | Field | Type | Description |
@@ -397,6 +440,8 @@ SyncOutbox ----> Google Sheet (Tickets tab, one-way, newest-first)
 
 | Rev | Change |
 |---|---|
+| **7** | **Bulk encoding specified (§4.7, FR-39).** The one requirement the product's own purpose already implied: §2 exists to reduce the manual effort of maintaining the log, and the department writes up several finished concerns at a time, so encoding them one-by-one — retyping the same date and technician each time — *was* the manual work. Recorded atomically because FR-9 forbids deletion: a half-written batch could not be undone, and re-entering what looked missing would create duplicates. Total: 39 requirements. |
+| **6** | **Report generation specified (§4.6, FR-36–38).** The "Generate Reports" screen existed with no requirement behind it and was built entirely from hardcoded figures, including a badge falsely claiming the numbers were synced with Google Sheets. Rather than delete it, its purpose was settled: the dashboard is the live operational view, a report is a fixed, filtered, exportable **department × period cross-tab**. FR-37 (period list derived from the data) and FR-38 (spreadsheet export + print) are written from the two concrete defects the mock-up had — a hand-written month list that would silently go stale, and export buttons wired to nothing. Total: 38 requirements. |
 | **5** | **Assignment decoupled from accounts (ADR-0017).** `assigned_to` (FK to User) and the `assigned_label` free-text fallback replaced by a **Technician directory** + ordered `TicketAssignee` join. Driven by the real data: two-technician work is 21% of tickets, 74% of handlers held no account, and FR-19 was therefore reporting on 26% of the history while omitting the busiest technician entirely. A technician is an auth-free directory entry like an Employee, resolve-or-created inline during encoding. FR-19 and FR-27 restated; no requirement added or removed. Analytics time series (FR-17, FR-21) gained a `day`/`week`/`month` granularity independent of the window. |
 | **4.1** | **Numbering defect fix.** FR-24 was defined twice — "Ongoing ticket ageing" (§4.3) and "One-way sync" (§4.4) — because the rev 4 renumbering shifted §4.4 by the wrong amount. §4.4 is now FR-25–32 and §4.5 is FR-33–35. All downstream citations in the design doc, traceability matrix, module specs, and plan were corrected; several had also been carrying pre-rev-4 numbers. Total: 35 requirements, no gaps, no duplicates. |
 | **4** | **Corrected to the department's real process.** Status ENUM rebuilt to Open / Ongoing / Closed; Pending, Assigned, In Progress, Resolved and Voided removed — they were never used. Ticket creation may now enter any status directly, defaulting to Closed (FR-2). `assigned_at` and `resolved_at` replaced by `ongoing_at` and `closed_at` (FR-7). Closed made terminal, no reopen (FR-8). Delete/void path removed (FR-9). `assigned_to` reclassified as a record of who handled the concern rather than a workflow stage. Audit actions RESOLVE and VOID removed. First-time fix rate (FR-23) and Ongoing ageing (FR-24) added — both newly answerable once the process was understood. OPEN-2 narrowed to dashboard access only; the closing question is settled. Requirements renumbered from FR-8 onward. |

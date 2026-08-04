@@ -139,9 +139,13 @@ async function bootstrap(): Promise<void> {
       dryRun: !args.commit,
       actorEmail: args.actor,
       blankStatus: args.blankStatus,
-      // "19" is a data-entry artefact filling the assignee column of the 55 oldest rows;
-      // the IT team confirmed those tickets were Patrick's.
-      assigneeAliases: { "19": "Patrick" },
+      assigneeAliases: {},
+      // The assignee column of the 55 oldest rows is a FORMULA, not a literal. The same 55
+      // rows read "19", then "29", then "22" across three exports, so exact-match aliasing
+      // is unwinnable — there is no fixed value to alias. The count is stable at 55 and the
+      // IT team confirmed those tickets were Patrick's, so the rule matches the SHAPE of the
+      // value. Every substitution is listed in the report.
+      numericAssignee: "Patrick",
     });
     printReport(report, args.sheet);
   } finally {

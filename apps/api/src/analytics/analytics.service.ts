@@ -5,10 +5,13 @@ import {
   TicketStatus,
   type AnalyticsWindow,
   type CountPoint,
+  type CoverageDto,
   type DatePoint,
   type FirstTimeFixDto,
   type Granularity,
   type OngoingAgeingItem,
+  type ReportMatrixDto,
+  type ReportQuery,
   type StatusCounts,
 } from "@11ftc/shared";
 import { DATABASE } from "../database/database.constants.js";
@@ -172,6 +175,126 @@ export class AnalyticsService {
       closed: r.closed,
       firstTimeFix: r.ftf,
       rate: r.closed > 0 ? r.ftf / r.closed : 0,
+    };
+  }
+
+  /**
+   * FR-37 — the full extent of encoded ticket dates. Deliberately unfiltered: the period
+   * picker is built from this, and a picker narrowed by the filter it is meant to set would
+   * strand the user on an empty month with no way back.
+   */
+  async coverage(): Promise<CoverageDto> {
+    const rows = await this.db
+      .select({
+        from: sql<string | null>`min(${schema.tickets.date})::text`,
+        to: sql<string | null>`max(${schema.tickets.date})::text`,
+        total: countInt,
+      })
+      .from(schema.tickets);
+    const r = rows[0] ?? { from: null, to: null, total: 0 };
+    return { from: r.from, to: r.to, total: r.total };
+  }
+
+  /**
+   * FR-36 — tickets per department per period (the report cross-tab).
+   *
+   * Two queries, pivoted here rather than in SQL. A `crosstab`/dynamic-pivot query would have
+   * to build a column list from the data at runtime, which is both harder to read and the
+   * kind of string-built SQL this codebase avoids; the row counts are tens per day, so the
+   * pivot costs nothing.
+   *
+   * Every ACTIVE department gets a row even when its count is zero. A report is a fixed-shape
+   * document: if a department vanished from June's report and reappeared in July's, that reads
+   * as a data error rather than as "nobody there filed a ticket".
+   */
+  async report(q: ReportQuery): Promise<ReportMatrixDto> {
+    const b = bucket(sql`${schema.tickets.date}::timestamp`, q.granularity);
+
+    const filters: SQL[] = [];
+    const window = dateWindow(q);
+    if (window) filters.push(window);
+    if (q.departmentId) {
+      filters.push(sql`${schema.employees.departmentId} = ${q.departmentId}`);
+    }
+    if (q.mainIssueId) {
+      filters.push(sql`${schema.tickets.mainIssueId} = ${q.mainIssueId}`);
+    }
+
+    const [cells, departments] = await Promise.all([
+      this.db
+        .select({
+          key: schema.departments.name,
+          departmentId: schema.departments.departmentId,
+          bucket: b,
+          count: countInt,
+        })
+        .from(schema.tickets)
+        .innerJoin(
+          schema.employees,
+          eq(schema.tickets.employeeId, schema.employees.employeeId),
+        )
+        .innerJoin(
+          schema.departments,
+          eq(schema.employees.departmentId, schema.departments.departmentId),
+        )
+        .where(filters.length ? and(...filters) : undefined)
+        .groupBy(schema.departments.departmentId, schema.departments.name, b),
+      this.db
+        .select({
+          key: schema.departments.name,
+          departmentId: schema.departments.departmentId,
+        })
+        .from(schema.departments)
+        .where(
+          q.departmentId
+            ? and(
+                eq(schema.departments.isActive, true),
+                eq(schema.departments.departmentId, q.departmentId),
+              )
+            : eq(schema.departments.isActive, true),
+        )
+        .orderBy(schema.departments.name),
+    ]);
+
+    // Columns come from the DATA, not from iterating the window: a month with no tickets
+    // gets no column, so the table never pads out to empty periods at either end.
+    const buckets = [...new Set(cells.map((c) => c.bucket))].sort();
+    const columnOf = new Map(buckets.map((bk, i) => [bk, i] as const));
+
+    // Include an inactive department that nonetheless has tickets in the window — retiring a
+    // lookup must not retroactively delete its history from the report (FR-9 in spirit).
+    const rowKeys = new Map(departments.map((d) => [d.departmentId, d.key] as const));
+    for (const c of cells) if (!rowKeys.has(c.departmentId)) rowKeys.set(c.departmentId, c.key);
+
+    const rows = [...rowKeys.entries()]
+      .map(([departmentId, key]) => ({
+        departmentId,
+        key,
+        counts: new Array<number>(buckets.length).fill(0),
+        total: 0,
+      }))
+      .sort((a, z) => a.key.localeCompare(z.key));
+    const rowOf = new Map(rows.map((r) => [r.departmentId, r] as const));
+
+    const columnTotals = new Array<number>(buckets.length).fill(0);
+    let grandTotal = 0;
+    for (const c of cells) {
+      const row = rowOf.get(c.departmentId);
+      const col = columnOf.get(c.bucket);
+      if (row === undefined || col === undefined) continue;
+      // `?? 0` only to satisfy noUncheckedIndexedAccess — both arrays were filled to
+      // `buckets.length` above and `col` came from `columnOf`, so the slot always exists.
+      row.counts[col] = (row.counts[col] ?? 0) + c.count;
+      row.total += c.count;
+      columnTotals[col] = (columnTotals[col] ?? 0) + c.count;
+      grandTotal += c.count;
+    }
+
+    return {
+      buckets,
+      rows: rows.map(({ key, counts, total }) => ({ key, counts, total })),
+      columnTotals,
+      grandTotal,
     };
   }
 

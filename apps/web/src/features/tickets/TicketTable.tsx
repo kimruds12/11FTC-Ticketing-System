@@ -22,6 +22,8 @@ interface TicketTableProps {
   limit: number;
   offset: number;
   onPageChange: (nextOffset: number) => void;
+  /** Open the encode modal from the empty state — encoding is not a route. */
+  onEncode: () => void;
 }
 
 function initialsOf(name: string | null): string {
@@ -38,6 +40,7 @@ export default function TicketTable({
   limit,
   offset,
   onPageChange,
+  onEncode,
 }: TicketTableProps) {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + tickets.length, total);
@@ -46,7 +49,81 @@ export default function TicketTable({
 
   return (
     <div className="w-full overflow-hidden bg-white rounded-xl border border-gray-200 shadow-card">
-      <div className="overflow-x-auto">
+      {/* ── Phone / tablet: one card per ticket ──────────────────────────────────────
+          The table below needs 900px to stay honest, which on a 375px screen means dragging
+          a data grid sideways to read one row — eight columns of which two matter. A card
+          shows the same record in reading order at the width the device actually has.
+          `lg` is the same boundary the sidebar uses, so the layout changes once, not twice. */}
+      <div className="divide-y divide-gray-100 lg:hidden">
+        {tickets.length > 0 ? (
+          tickets.map((ticket) => (
+            <Link
+              key={ticket.ticketId}
+              href={`/tickets/${ticket.ticketId}`}
+              className="block px-4 py-3.5 transition-colors active:bg-gray-50 focus:outline-none focus-visible:bg-primary-50"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-sm font-bold text-gray-900">{ticket.ticketNo}</span>
+                <StatusBadge status={ticket.status} />
+              </div>
+
+              <div className="mt-2 flex items-center gap-2.5">
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-[10px] font-bold text-blue-700">
+                  {initialsOf(ticket.employeeName)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-gray-900">
+                    {ticket.employeeName ?? "—"}
+                  </span>
+                  <span className="block truncate text-xs font-medium text-gray-500">
+                    {ticket.department ?? "—"}
+                  </span>
+                </span>
+              </div>
+
+              {/* `min-w-0` + `truncate` on the issue: real concern labels are long and would
+                  otherwise push the date off the card. */}
+              <div className="mt-2.5 flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-bold text-gray-600">
+                  {ticket.mainIssue ?? "—"}
+                </span>
+                <span className="flex-shrink-0 text-xs font-medium tabular-nums text-gray-400">
+                  {formatSheetDate(ticket.date)}
+                </span>
+              </div>
+
+              <div className="mt-2 text-xs">
+                {ticket.assignees.length ? (
+                  <span className="font-medium text-gray-500">
+                    Handled by{" "}
+                    <span className="font-semibold text-gray-900">
+                      {formatAssignees(ticket.assignees)}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="italic text-gray-400">Unassigned</span>
+                )}
+              </div>
+            </Link>
+          ))
+        ) : (
+          <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+            <p className="text-sm font-medium text-gray-400">
+              No tickets found matching the search criteria.
+            </p>
+            <button
+              type="button"
+              onClick={onEncode}
+              className="mt-1 text-xs font-bold text-primary-700 hover:underline"
+            >
+              Encode a new ticket →
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Desktop: the full eight-column record ── */}
+      <div className="hidden overflow-x-auto lg:block">
         <table className="w-full min-w-[900px] border-collapse text-left">
           <thead>
             <tr className="bg-gray-50/80 border-b border-gray-100">
@@ -154,12 +231,13 @@ export default function TicketTable({
                     <p className="text-sm text-gray-400 font-medium">
                       No tickets found matching the search criteria.
                     </p>
-                    <Link
-                      href="/tickets/new"
+                    <button
+                      type="button"
+                      onClick={onEncode}
                       className="text-xs font-bold text-primary-700 hover:text-primary-800 hover:underline mt-1"
                     >
                       Encode a new ticket →
-                    </Link>
+                    </button>
                   </div>
                 </td>
               </tr>

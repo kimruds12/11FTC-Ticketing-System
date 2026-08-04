@@ -150,9 +150,22 @@ export class TicketRepository {
     }
     const where = conditions.length ? and(...conditions) : undefined;
 
+    /**
+     * Newest-first by the ticket's OWN date, then by its number — the same order the team's
+     * sheet uses (FR-28), and the order they read the queue in.
+     *
+     * NOT `created_at`. That is the row's insert time, which says nothing useful here for two
+     * reasons. A backdated ticket (FR-5) is about last week but was inserted just now, so
+     * `created_at` files it above tickets that really are newer. And the imported history
+     * carries `created_at` values taken from the sheet's LOCAL timestamps stored as UTC — up
+     * to 8 hours ahead of the database clock — so every imported row outranked anything
+     * freshly encoded, and a just-created ticket appeared several rows down instead of at the
+     * top. `sequence_number` breaks the tie within a day and is strictly increasing, so a
+     * bulk batch stays contiguous and in the order it was entered.
+     */
     const rows = await this.enriched()
       .where(where)
-      .orderBy(desc(schema.tickets.createdAt))
+      .orderBy(desc(schema.tickets.date), desc(schema.tickets.sequenceNumber))
       .limit(query.limit)
       .offset(query.offset);
 

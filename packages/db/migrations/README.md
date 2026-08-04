@@ -11,26 +11,66 @@ the single source of truth, so migrations stay aligned with the ERD by construct
 | `0000_init.sql` | 5 enums, 8 tables, all FKs, `uq_ticket_seq UNIQUE(sequence_scope, sequence_number)`, `name_normalized` UNIQUE, `ticket_no` UNIQUE, and the ERD indexes. Uses `gen_random_uuid()` (available in Supabase by default). |
 | `0001_enable_rls_supabase.sql` | **Supabase hardening** — enables RLS (no policies) on every table, closing the auto-exposed PostgREST/anon surface. See the file header for the full rationale. |
 | `0002_curvy_hercules.sql` | Adds `users.auth_uid uuid UNIQUE` (nullable-until-claimed) — the link from the `public.users` allowlist row to the Supabase auth identity, bound on first Google login (M1 / ADR-0013). |
+| `0003_sharp_reavers.sql` | Adds the `ticket_source` enum plus `tickets.assigned_label` and `tickets.source` — the M10 legacy import needs to mark rows it created (`IMPORT`) and to carry the sheet's free-text assignee string. |
+| `0004_add_technicians.sql` | **ADR-0017** — creates `technicians` (auth-free directory, `name_normalized` UNIQUE) and the ordered `ticket_assignees` join table, both with RLS enabled. |
+| `0005_drop_ticket_assigned_columns.sql` | Drops `tickets.assigned_to` (FK) and `tickets.assigned_label`, now superseded by `ticket_assignees`. **Run `scripts/backfill-technicians.mjs --commit` before this one** — it is the last point at which the old values can be read. |
 
 Verify `uq_ticket_seq UNIQUE (sequence_scope, sequence_number)` is present before merging
 M3 — the database constraint is the last line of defence for numbering (ADR-0004).
 
 ## Applying to Supabase
 
-Both files are plain PostgreSQL and target the `public` schema, so either path works:
+Every file is plain PostgreSQL and targets the `public` schema, so either path works:
 
 **A. Drizzle (recommended — keeps history in sync):**
 ```bash
-pnpm install                 # once, to get drizzle-kit
-export DATABASE_URL=...       # Supabase session pooler (5432) — see .env.example
-pnpm db:migrate               # applies 0000 then 0001, records them in drizzle's journal
+pnpm install     # once, to get drizzle-kit
+pnpm db:migrate  # applies anything unrecorded, then records it in drizzle's ledger
+```
+`DATABASE_URL` is read from the repo-root `.env` by `drizzle.config.ts`; export it in the
+environment instead (CI, `docker compose`) and that wins.
+
+**B. Supabase SQL editor / CLI (one-off / manual):** paste the files in order (strip the
+`--> statement-breakpoint` markers, or run each block), or drop them into a
+`supabase/migrations/` folder and `supabase db push`. If you go this route, still treat the
+Drizzle schema as canonical and re-generate from it for future changes so the two never
+drift — **and read the next section**, because path B does not update drizzle's ledger.
+
+## The ledger, and baselining it
+
+`drizzle-kit migrate` decides what to run from a single comparison against
+`drizzle.__drizzle_migrations` (drizzle-orm `pg-core/dialect.js`):
+
+```sql
+select id, hash, created_at from drizzle.__drizzle_migrations
+  order by created_at desc limit 1
+```
+```js
+if (!lastDbMigration || Number(lastDbMigration.created_at) < migration.folderMillis) { … }
 ```
 
-**B. Supabase SQL editor / CLI (one-off / manual):** paste `0000_init.sql` then
-`0001_enable_rls_supabase.sql` (strip the `--> statement-breakpoint` markers, or run each
-block), or drop both into a `supabase/migrations/` folder and `supabase db push`. If you go
-this route, still treat the Drizzle schema as canonical and re-generate from it for future
-changes so the two never drift.
+Only `created_at` gates the skip — it is compared against the journal entry's `when`. So a
+migration applied by **path B** leaves no ledger row, and the next `pnpm db:migrate`
+believes *nothing* has ever run: it starts at `0000_init.sql` and dies on
+`relation "users" already exists`. Because the whole run is one transaction, nothing is
+applied and the command is simply unusable. That is exactly what happened here — 0000–0005
+were applied by hand and the ledger stayed empty.
+
+The repair is **baselining**: recording that a migration is applied without executing it.
+
+```bash
+node scripts/baseline-migrations.mjs            # dry run — reports, writes nothing
+node scripts/baseline-migrations.mjs --commit   # writes the ledger rows
+```
+
+The script writes a row only for a migration whose effect it can **prove** is present in
+the database (one probe per file — `technicians` exists, `tickets.assigned_to` is gone, and
+so on), and aborts writing nothing if any probe fails. That rule is the whole safety
+property: a ledger row for a migration that was never applied makes drizzle skip that file
+**forever**, leaving the schema permanently and silently behind. Hashes come from
+drizzle-orm's own `readMigrationFiles`, so they match the migrator by construction.
+
+Prefer path A and this stays unnecessary.
 
 ## Why RLS matters here (0001)
 

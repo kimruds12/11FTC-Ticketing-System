@@ -71,6 +71,36 @@ export class TicketService {
   }
 
   /**
+   * FR-39 — encode a batch in ONE transaction. All of them commit, or none do.
+   *
+   * The loop is deliberately SEQUENTIAL. Every iteration allocates a ticket number through the
+   * same `ticket_sequence` row, which `ON CONFLICT DO UPDATE` serializes anyway; running them
+   * concurrently on one connection would gain nothing and would make the assigned order
+   * non-deterministic, so row 3 of the batch might not get the third number.
+   *
+   * A failure anywhere rolls the whole batch back — see `bulkEncodeTicketSchema` for why
+   * partial success is the wrong answer when nothing can be deleted. The numbers consumed
+   * before the failure are not reused; a gap is cosmetic, a duplicate is corruption.
+   */
+  async encodeBulk(inputs: EncodeTicketDto[], actor: AuthContext): Promise<TicketDto[]> {
+    const rows = await this.db.transaction(async (tx) => {
+      const created: TicketRow[] = [];
+      for (const input of inputs) {
+        created.push(await this.encodeTx(input, actor, tx));
+      }
+      return created;
+    });
+
+    // AFTER commit, once for the batch — the worker drains the outbox, and every row of it
+    // landed in the same transaction as its ticket (M7).
+    await this.dispatchDrain();
+    this.logger.log(
+      `encoded ${rows.length} tickets (${rows[0]?.ticketNo}..${rows[rows.length - 1]?.ticketNo}) by ${actor.userId}`,
+    );
+    return Promise.all(rows.map((row) => this.requireDto(row.ticketId)));
+  }
+
+  /**
    * The transactional core of encode — everything that must commit together. Public so the
    * atomicity gate can drive it inside a rollback-able tx (nothing is ever deleted, FR-9).
    */

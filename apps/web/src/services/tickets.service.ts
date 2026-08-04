@@ -1,6 +1,7 @@
 import type { AxiosInstance } from "axios";
 import type {
   AssignTicketDto,
+  BulkEncodeTicketDto,
   CloseTicketDto,
   EncodeTicketDto,
   TicketDetailDto,
@@ -36,6 +37,12 @@ export const ticketsService = (api: AxiosInstance) => ({
 
   async encode(payload: EncodeTicketDto): Promise<TicketDto> {
     const { data } = await api.post<TicketDto>("/tickets", payload);
+    return data;
+  },
+
+  /** FR-39 — one request, one transaction, all-or-nothing. */
+  async encodeBulk(payload: BulkEncodeTicketDto): Promise<TicketDto[]> {
+    const { data } = await api.post<TicketDto[]>("/tickets/bulk", payload);
     return data;
   },
 

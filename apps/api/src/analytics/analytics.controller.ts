@@ -1,12 +1,16 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import {
   analyticsWindowSchema,
+  reportQuerySchema,
   UserRole,
   type AnalyticsWindow,
   type CountPoint,
+  type CoverageDto,
   type DatePoint,
   type FirstTimeFixDto,
   type OngoingAgeingItem,
+  type ReportMatrixDto,
+  type ReportQuery,
   type StatusCounts,
 } from "@11ftc/shared";
 import { Roles } from "../auth/roles.decorator.js";
@@ -72,5 +76,19 @@ export class AnalyticsController {
   @Get("ongoing-ageing")
   ongoingAgeing(): Promise<OngoingAgeingItem[]> {
     return this.analytics.ongoingAgeing();
+  }
+
+  /** FR-37 — the encoded date range, unfiltered. Drives the report period picker. */
+  @Get("coverage")
+  coverage(): Promise<CoverageDto> {
+    return this.analytics.coverage();
+  }
+
+  /** FR-36 — the report cross-tab: tickets per department per period. */
+  @Get("report")
+  report(
+    @Query(new ZodValidationPipe(reportQuerySchema)) q: ReportQuery,
+  ): Promise<ReportMatrixDto> {
+    return this.analytics.report(q);
   }
 }

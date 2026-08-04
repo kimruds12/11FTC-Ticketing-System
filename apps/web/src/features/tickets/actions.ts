@@ -5,6 +5,7 @@ import { ticketsService } from "@/services/tickets.service";
 import { AppError } from "@/services/errors";
 import type {
   AssignTicketDto,
+  BulkEncodeTicketDto,
   CloseTicketDto,
   EncodeTicketDto,
   TicketDto,
@@ -45,6 +46,19 @@ export async function encodeTicketAction(
     const ticket = await ticketsService(serverApi()).encode(payload);
     revalidateTicket(ticket.ticketId);
     return { ok: true, data: ticket };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/** FR-39 — one round trip, one transaction. A rejected row fails the batch, nothing is written. */
+export async function bulkEncodeTicketAction(
+  payload: BulkEncodeTicketDto,
+): Promise<ActionResult<TicketDto[]>> {
+  try {
+    const tickets = await ticketsService(serverApi()).encodeBulk(payload);
+    revalidateTicket();
+    return { ok: true, data: tickets };
   } catch (error) {
     return fail(error);
   }

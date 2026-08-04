@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   TicketStatus,
   type DepartmentDto,
@@ -34,6 +33,10 @@ interface TicketFiltersProps {
   departments: DepartmentDto[];
   mainIssues: MainIssueDto[];
   technicians: TechnicianDto[];
+  /** Open the single-ticket modal. Encoding is never a route — see TicketQueueClient. */
+  onEncode: () => void;
+  /** Open the batch modal (FR-39). */
+  onBulkEncode: () => void;
 }
 
 export default function TicketFilters({
@@ -43,6 +46,8 @@ export default function TicketFilters({
   departments,
   mainIssues,
   technicians,
+  onEncode,
+  onBulkEncode,
 }: TicketFiltersProps) {
   return (
     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-card space-y-3">
@@ -136,15 +141,31 @@ export default function TicketFilters({
             </select>
           </div>
 
-          <Link
-            href="/tickets/new"
+          {/* Bulk sits beside single rather than hidden inside it: a shift's worth of
+              tickets is the case the department actually has, so it should not be a mode you
+              have to discover after opening the wrong form. */}
+          <button
+            type="button"
+            onClick={onBulkEncode}
+            className="btn-outline py-2 px-3.5 shadow-sm text-xs font-bold leading-none text-gray-600 bg-white"
+            title="Encode several tickets at once"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+            Bulk
+          </button>
+
+          <button
+            type="button"
+            onClick={onEncode}
             className="btn-primary py-2 px-4 shadow-sm text-xs font-bold leading-none"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
             Encode Ticket
-          </Link>
+          </button>
         </div>
       </div>
 

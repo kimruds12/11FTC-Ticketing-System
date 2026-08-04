@@ -2,9 +2,12 @@ import type { AxiosInstance } from "axios";
 import type {
   AnalyticsWindow,
   CountPoint,
+  CoverageDto,
   DatePoint,
   FirstTimeFixDto,
   OngoingAgeingItem,
+  ReportMatrixDto,
+  ReportQuery,
   StatusCounts,
 } from "@11ftc/shared";
 
@@ -42,6 +45,24 @@ export const analyticsService = (api: AxiosInstance) => {
     },
     async ongoingAgeing(): Promise<OngoingAgeingItem[]> {
       return (await api.get<OngoingAgeingItem[]>("/analytics/ongoing-ageing")).data;
+    },
+    /** FR-37 — full encoded date range, unfiltered. Builds the report period picker. */
+    async coverage(): Promise<CoverageDto> {
+      return (await api.get<CoverageDto>("/analytics/coverage")).data;
+    },
+    /** FR-36 — the report cross-tab: departments down, periods across. */
+    async report(q: Partial<ReportQuery> = {}): Promise<ReportMatrixDto> {
+      return (
+        await api.get<ReportMatrixDto>("/analytics/report", {
+          params: {
+            from: q.from,
+            to: q.to,
+            granularity: q.granularity,
+            departmentId: q.departmentId,
+            mainIssueId: q.mainIssueId,
+          },
+        })
+      ).data;
     },
   };
 };

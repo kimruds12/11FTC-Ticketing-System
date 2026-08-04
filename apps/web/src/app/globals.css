@@ -175,3 +175,119 @@
 .animate-scale-in {
   animation: scale-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ── Small-screen encoding ────────────────────────────
+   PRODUCT.md records small-screen support as a CAPABILITY, not a reflow: a technician away
+   from a desk must be able to *complete* a ticket, not merely read one. These rules serve
+   that, and they key off INPUT METHOD rather than width — a touch laptop needs the bigger
+   target as much as a phone does, and a phone in a desktop-width landscape does not stop
+   being a touch device. */
+
+/* Safe areas: keep content clear of the notch and home indicator, most visibly in landscape,
+   which is how you hold a phone one-handed at a machine. Written here rather than inline so
+   the md/lg padding scale-up survives; `max()` means a device without insets is unaffected. */
+@supports (padding: max(0px)) {
+  .app-main > main {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  @media (min-width: 768px) {
+    .app-main > main {
+      padding-left: max(1.5rem, env(safe-area-inset-left));
+      padding-right: max(1.5rem, env(safe-area-inset-right));
+    }
+  }
+  @media (min-width: 1024px) {
+    .app-main > main {
+      padding-left: max(2rem, env(safe-area-inset-left));
+      padding-right: max(2rem, env(safe-area-inset-right));
+    }
+  }
+}
+
+/* Touch targets reach 44px on coarse pointers ONLY, so the desk-bound density that makes a
+   300-row ticket table readable is not sacrificed to a device nobody is using at the time. */
+@media (pointer: coarse) {
+  .nav-touch,
+  .nav-item,
+  .dropdown-item,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost {
+    min-height: 44px;
+  }
+  .input,
+  .input-select {
+    min-height: 44px;
+  }
+  /* iOS zooms the page when a focused field's text is under 16px. The zoom does not undo
+     itself, so the encoder is left panning a magnified form one-handed. 16px is the fix. */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* A control that only reveals itself on hover is invisible on a touch screen. */
+@media (hover: none) {
+  .tooltip {
+    display: none;
+  }
+}
+
+/* ── Print ────────────────────────────────────────────
+   Turns the Reports page into the PDF, via the browser's own print-to-PDF. That is the
+   whole "Export PDF" implementation: a PDF library would have to re-describe this table in
+   a second layout language and would drift from the one on screen the first time a column
+   was added. What prints must be what you looked at.
+
+   `.print-hide` is opted into by app chrome and by anything that is a control rather than
+   content — a printed page has no use for a dropdown you cannot click. */
+@media print {
+  .print-hide {
+    display: none !important;
+  }
+
+  /* AppLayout sets padding-left inline from the sidebar width, and pads the top for the
+     fixed header. Both are gone in print, so both offsets must be too — `!important`
+     because an inline style otherwise wins. */
+  .app-main {
+    padding-left: 0 !important;
+  }
+  .app-main > main {
+    padding: 0 !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* Card chrome is screen affordance; on paper it just wastes margin and toner. */
+  .card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  /* Keep the header row on every page of a long cross-tab, and never split a row. */
+  thead {
+    display: table-header-group;
+  }
+  tr,
+  img {
+    break-inside: avoid;
+  }
+
+  /* Backgrounds are off by default when printing; the header row is white-on-dark and
+     would otherwise print as white-on-white — i.e. invisible. */
+  table th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
