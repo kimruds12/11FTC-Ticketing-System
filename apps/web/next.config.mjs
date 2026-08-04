@@ -22,22 +22,25 @@ const nextConfig = {
   // @11ftc/shared ships built dist ESM; transpiling it keeps Next's target handling simple.
   transpilePackages: ["@11ftc/shared"],
   /**
-   * POLL for file changes instead of relying on filesystem events.
+   * DO NOT add `watchOptions: { pollIntervalMs }` here. It breaks routing under Turbopack.
    *
-   * Dev runs in Docker with the Windows host tree bind-mounted, and inotify events do not
-   * cross that boundary. docker-compose already sets CHOKIDAR_USEPOLLING and
-   * WATCHPACK_POLLING, but those are chokidar/webpack variables and this app runs on
-   * TURBOPACK (Next 16's default dev bundler), which reads neither. The result was a dev
-   * server that served the code it started with: an edit that was definitely on disk — and
-   * verifiably present inside the container — never reached the browser, so a fix appeared
-   * not to work and the honest conclusion "no change" was wrong.
+   * The temptation is real: dev runs in Docker with the Windows tree bind-mounted, inotify
+   * events do not cross that boundary, and the CHOKIDAR_USEPOLLING / WATCHPACK_POLLING vars
+   * in docker-compose do nothing because they belong to chokidar and webpack — this app is
+   * on Turbopack, Next 16's default dev bundler, which reads neither. So the dev server
+   * keeps serving the code it booted with, and `watchOptions.pollIntervalMs` looks like the
+   * documented fix.
    *
-   * `watchOptions.pollIntervalMs` is the bundler-agnostic switch Next added for exactly this.
-   * Costs a little CPU; only applies to `next dev`.
+   * It is not, here. Turning it on made Turbopack's poller stat build paths that do not
+   * exist (`.next-internal/server/app/(app)/tickets/new/page` among them) and log
+   * `watch error ... NotFound` for each. Routes named in those errors stopped being
+   * registered: `/tickets/new` began returning a hard 404 in dev while `/tickets` was fine
+   * and `pnpm build` still emitted the route. Measured, same container, one variable:
+   * 19 watch errors with polling, 0 without.
+   *
+   * The cost of leaving it off is that a code change needs `docker compose restart web` to
+   * appear. That is annoying. A dev server that 404s real routes is worse.
    */
-  watchOptions: {
-    pollIntervalMs: 500,
-  },
 };
 
 export default nextConfig;
