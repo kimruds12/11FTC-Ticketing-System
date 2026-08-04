@@ -91,6 +91,14 @@ is unreadable to the audience it was drawn for. Traceability belongs in a table.
 | FR-34 | Written in the same transaction | Write Audit Entry «include» | SQ1, SQ2 |
 | FR-35 | Immutable | Write Audit Entry «include» | ERD, CMP |
 
+### 2.6 Report Generation (SRS §4.6)
+
+| FR | Requirement | Use case | Diagrams |
+|---|---|---|---|
+| FR-36 | Department × period cross-tab, filtered, with totals | Generate Report | CMP (`AnalyticsService.report`) |
+| FR-37 | Period list derived from encoded data | Generate Report | CMP (`AnalyticsService.coverage`) |
+| FR-38 | Spreadsheet export and print | Generate Report | — (client-side; no server surface) |
+
 ---
 
 ## 3. Use cases → SRS sections
@@ -196,6 +204,9 @@ until the module lands.
 | FR-33 | M6 | [M6-audit.md](implementation/M6-audit.md) | close-with-remarks → 2 rows | scaffold |
 | FR-34 | M6 | [M6-audit.md](implementation/M6-audit.md) | audit in same tx as change | scaffold |
 | FR-35 | M6 | [M6-audit.md](implementation/M6-audit.md) | no mutate/delete; `check:no-delete` | CI-enforced |
+| FR-36 | M9 | [M9-analytics.md](implementation/M9-analytics.md) | cross-tab cells + grand total reconciles | tested |
+| FR-37 | M9 | [M9-analytics.md](implementation/M9-analytics.md) | coverage reports real min/max date | tested |
+| FR-38 | M9 (web) | [M9-analytics.md](implementation/M9-analytics.md) | CSV carries filters; print hides chrome | manual |
 
 **Decisions behind these:** [ADR-0004](adr/0004-atomic-ticket-numbering.md) (FR-4/5),
 [ADR-0005](adr/0005-three-status-terminal-closed-no-delete.md) (FR-1/2/7/8/9),

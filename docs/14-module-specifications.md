@@ -25,7 +25,7 @@ adjust in flight.
 | M6 | Audit Log | `AuditModule` | M1 | Medium |
 | M7 | Sync Outbox (write side) | `OutboxModule` | — | High |
 | M8 | Sync Worker (read side) | `SyncWorkerModule` | M7 | **Highest** |
-| M9 | Analytics | `AnalyticsModule` | M1 | Low |
+| M9 | Analytics & Reports | `AnalyticsModule` | M1 | Low |
 
 > **Risk here means "cost of getting it wrong late", not difficulty.** M3 and M8 are
 > both easy to write and expensive to fix, because both fail silently — M3 produces
@@ -299,9 +299,9 @@ the wrong row.
 
 ---
 
-## M9 — Analytics
+## M9 — Analytics & Reports
 
-**Realizes:** FR-17–24
+**Realizes:** FR-17–24 (dashboard), FR-36–38 (reports)
 
 ### Contract
 Read-only aggregates over Postgres. No writes.
@@ -317,6 +317,8 @@ Read-only aggregates over Postgres. No writes.
 | FR-22 | Open vs Ongoing vs Closed | current status |
 | FR-23 | **First-time fix rate** | `status='Closed' AND ongoing_at IS NULL` |
 | FR-24 | Ongoing ageing | `now() - ongoing_at` |
+| FR-36 | **Report cross-tab** — department × period | `date`, `GROUP BY department, date_trunc(...)` |
+| FR-37 | **Coverage** — `min(date)`, `max(date)`, total | — (unfiltered, whole table) |
 
 Time series (FR-17, FR-21) take a **`granularity`** of `day` / `week` / `month`, independent of
 the window. Buckets are `date_trunc`-aligned, so a week always starts Monday and two refreshes
@@ -328,6 +330,19 @@ agree; a rolling offset from "now" would not.
 3. `ongoing_at IS NULL` on a Closed ticket **is** the first-time-fix signal. No extra column, no flag to keep in sync.
 4. **FR-19 joins `ticket_assignees`, never `users`.** Joining accounts was the old bug: it reported on the 26% of tickets whose handler happened to hold a login and silently omitted the busiest technician. A two-technician ticket credits BOTH, so the counts sum to more than the ticket count — say so on screen rather than letting someone "fix" it.
 5. **The dashboard's default range is all-time.** The history predates today; a short default window renders every chart empty and reads as a broken dashboard. Empty states must name the window they are empty for.
+6. **The report's grand total equals the ticket count in the window (FR-36).** `tickets.employee_id` and `employees.department_id` are both NOT NULL, so the department joins cannot drop a ticket. A report that quietly disagrees with the ticket list is worse than no report — the reconciliation is asserted in a test, not assumed.
+7. **Every active department keeps a row, zero included.** A report is a document; a department that vanishes from June's report and returns in July's reads as a data error rather than as a quiet month. An *inactive* department still gets a row if it has tickets in the window — retiring a lookup must not erase its history.
+8. **Report columns come from the data, not from iterating the window.** Asking for a year and getting five columns means five months had tickets. Padding to twelve would imply the other seven were measured.
+9. **Reports and the dashboard are different questions.** Dashboard = live, operational, at-a-glance. Report = fixed period, filtered, exported. Do not "unify" them: the dashboard has no cross-tab and does not need one, and the report must not silently re-run when a dropdown changes — a number someone is about to forward should be the result of a deliberate action.
+
+### Reports — the failure this replaced
+
+The Reports screen shipped during the UI phase against **no requirement**, built entirely
+from a hardcoded `compilationMockData` map, with a department list that did not match the
+real one and a badge reading "SYNCED WITH GOOGLE SHEETS" over invented figures. Nothing on
+the page ever called the API. Treat that as the cautionary case: a screen that misreports
+itself as live is worse than one that is plainly a placeholder, because those numbers get
+carried into a meeting. FR-36–38 exist to say what the page is actually for.
 
 ### Watch-outs
 - **No Redis cache, no materialized views initially.** At tens of tickets/day the table is in Postgres's buffer cache and a cache round-trip can be slower than the query. Ladder: add the index → cache the response → materialized view refreshed by a BullMQ repeatable job. Cache invalidation bugs are far harder to find than slow queries.
@@ -340,6 +355,14 @@ agree; a rolling offset from "now" would not.
 - FR-19 counts every ticket that has an assignee, including those whose technician holds no
   account; a `Kim/Paul` ticket increments both Kim and Paul
 - `granularity=month` over a two-month span returns exactly two buckets, aligned to the 1st
+- **FR-36 cells land in the right row and column** — not merely the right totals. The pivot
+  places counts by Map lookup and array index; a mismatched key puts a real number in the
+  wrong department's cell and the table still renders perfectly
+- **FR-36 grand total equals a plain `count(*)` over the same window** (invariant 6)
+- An active department with no tickets still appears, as an all-zero row
+- `departmentId` narrows to one row; `mainIssueId` narrows across all rows
+- A period inside the window with no tickets produces **no column**
+- **FR-37 coverage reports the real newest encoded date** and ignores every filter
 
 ---
 

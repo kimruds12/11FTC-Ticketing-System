@@ -33,15 +33,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* ── Mobile Sidebar Backdrop ─────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-overlay lg:hidden"
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-overlay lg:hidden print-hide"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
       )}
 
       {/* ── Sidebar ────────────────────────────────── */}
+      {/* `print-hide`: app chrome is not part of a printed report — see the @media print
+          block in globals.css, which also cancels the offsets these two elements impose. */}
       <div
-        className={`fixed top-0 bottom-0 left-0 z-overlay transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-overlay transition-transform duration-300 lg:translate-x-0 print-hide ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -50,13 +52,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* ── Main Content Wrapper ────────────────────── */}
       <div
-        className="flex flex-col min-h-screen main-transition"
+        className="app-main flex flex-col min-h-screen main-transition"
         style={{ paddingLeft: `${sidebarWidth}px` }}
       >
-        <Header
-          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-          isSidebarCollapsed={isCollapsed}
-        />
+        <div className="print-hide">
+          <Header
+            onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+            isSidebarCollapsed={isCollapsed}
+          />
+        </div>
         <main className="flex-1 p-4 md:p-6 lg:p-8 pt-20 lg:pt-20">
           {children}
         </main>
