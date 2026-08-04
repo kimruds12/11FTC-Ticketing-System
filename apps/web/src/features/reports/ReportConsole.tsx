@@ -165,9 +165,28 @@ export default function ReportConsole() {
     [],
   );
 
-  const columnHeaders = useMemo(
-    () => (matrix ? matrix.buckets.map((b) => columnLabel(b, applied?.granularity ?? "month")) : []),
-    [matrix, applied],
+  /**
+   * Columns as {bucket, label} pairs.
+   *
+   * The label MUST come from `loadedFor`, not `applied`. `applied` changes the instant
+   * "Apply changes" is clicked, while `matrix` still holds the previous result until the
+   * fetch lands — so reading granularity from `applied` labels the OLD buckets with the NEW
+   * granularity. Going Weekly → Monthly rendered five different week columns all headed
+   * "Jun 2026": five columns of real, different numbers under one heading. (React only
+   * surfaced it as a duplicate-key warning because the label was also the key.)
+   *
+   * `loadedFor` is set in the same async continuation as `setMatrix`, so the two are
+   * always one consistent snapshot.
+   */
+  const columns = useMemo(
+    () =>
+      matrix
+        ? matrix.buckets.map((bucket) => ({
+            bucket,
+            label: columnLabel(bucket, loadedFor?.granularity ?? "month"),
+          }))
+        : [],
+    [matrix, loadedFor],
   );
 
   const deptName = (id: string) =>
@@ -175,19 +194,26 @@ export default function ReportConsole() {
   const issueLabel = (id: string) =>
     mainIssues.find((i) => i.mainIssueId === id)?.label ?? "All main issues";
 
-  const summary = applied
-    ? `${monthLabel(applied.from)} – ${monthLabel(applied.to)} · ${
-        applied.departmentId ? deptName(applied.departmentId) : "All departments"
-      } · ${applied.mainIssueId ? issueLabel(applied.mainIssueId) : "All main issues"}`
+  /**
+   * Describes the report ON SCREEN, so it reads from `loadedFor` for the same reason the
+   * column labels do — during an in-flight refetch `applied` is already the NEW selection
+   * while the table still shows the OLD numbers. This string is also the CSV's subtitle, so
+   * getting it from `applied` would let a stale export leave the building describing filters
+   * that produced none of its figures.
+   */
+  const summary = loadedFor
+    ? `${monthLabel(loadedFor.from)} – ${monthLabel(loadedFor.to)} · ${
+        loadedFor.departmentId ? deptName(loadedFor.departmentId) : "All departments"
+      } · ${loadedFor.mainIssueId ? issueLabel(loadedFor.mainIssueId) : "All main issues"}`
     : "";
 
   const handleExport = () => {
-    if (!matrix || !applied) return;
-    const csv = reportToCsv(matrix, columnHeaders, {
+    if (!matrix || !loadedFor) return;
+    const csv = reportToCsv(matrix, columns.map((c) => c.label), {
       title: "11FTC IT Tickets — Report Compilation",
       subtitle: summary,
     });
-    downloadCsv(`11ftc-tickets-${applied.from}_to_${applied.to}.csv`, csv);
+    downloadCsv(`11ftc-tickets-${loadedFor.from}_to_${loadedFor.to}.csv`, csv);
   };
 
   /* ── Render ───────────────────────────────────────────────────────────────────── */
@@ -358,7 +384,7 @@ export default function ReportConsole() {
               Tickets created by department per period (FR-36)
             </p>
           </div>
-          {applied && <p className="text-xs font-bold text-gray-600">{summary}</p>}
+          {loadedFor && <p className="text-xs font-bold text-gray-600">{summary}</p>}
         </div>
 
         {loadError && (
@@ -376,7 +402,7 @@ export default function ReportConsole() {
 
         {matrix && matrix.grandTotal === 0 ? (
           <p className="py-12 text-center text-sm font-semibold text-gray-500">
-            No tickets were encoded in this period{applied?.departmentId || applied?.mainIssueId ? " for these filters" : ""}.
+            No tickets were encoded in this period{loadedFor?.departmentId || loadedFor?.mainIssueId ? " for these filters" : ""}.
           </p>
         ) : matrix ? (
           <div className="overflow-x-auto border border-gray-200 rounded-xl">
@@ -386,9 +412,12 @@ export default function ReportConsole() {
                   <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider">
                     Department
                   </th>
-                  {columnHeaders.map((h) => (
-                    <th key={h} className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider text-center">
-                      {h}
+                  {/* Keyed by BUCKET, never by label. The server builds buckets with
+                      `[...new Set(...)]`, so they are unique by construction; labels are a
+                      display concern and two of them can legitimately coincide. */}
+                  {columns.map((c) => (
+                    <th key={c.bucket} className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider text-center">
+                      {c.label}
                     </th>
                   ))}
                   <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider text-center">
@@ -404,7 +433,7 @@ export default function ReportConsole() {
                     </td>
                     {row.counts.map((n, i) => (
                       <td
-                        key={columnHeaders[i] ?? i}
+                        key={columns[i]?.bucket ?? i}
                         className={`px-6 py-3.5 text-center text-sm tabular-nums ${
                           n === 0 ? "text-gray-300" : "font-semibold text-gray-600"
                         }`}
@@ -420,7 +449,7 @@ export default function ReportConsole() {
                 <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
                   <td className="px-6 py-4 text-sm text-gray-900">GRAND TOTAL</td>
                   {matrix.columnTotals.map((n, i) => (
-                    <td key={columnHeaders[i] ?? i} className="px-6 py-4 text-center text-sm text-gray-900 tabular-nums">
+                    <td key={columns[i]?.bucket ?? i} className="px-6 py-4 text-center text-sm text-gray-900 tabular-nums">
                       {n}
                     </td>
                   ))}
