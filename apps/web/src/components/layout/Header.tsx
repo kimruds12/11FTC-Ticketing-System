@@ -30,11 +30,9 @@ const routeMeta: Record<string, { breadcrumb: string[]; title: string; subtitle?
     title: "Ticket Management",
     subtitle: "Manage and track IT tickets.",
   },
-  "/tickets/new": {
-    breadcrumb: [],
-    title: "Create Ticket",
-    subtitle: "Encode a new IT ticket.",
-  },
+  // No "/tickets/new" entry: encoding is a modal over the queue, not a route. A dedicated
+  // page cost a full server round trip — lookups, layout, shell — every time someone recorded
+  // a ticket, and the form was already modal chrome dimming a page that wasn't there.
   "/reports": {
     breadcrumb: ["Generate Reports"],
     title: "Generate Reports",

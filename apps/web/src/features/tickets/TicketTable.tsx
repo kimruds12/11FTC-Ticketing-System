@@ -22,6 +22,8 @@ interface TicketTableProps {
   limit: number;
   offset: number;
   onPageChange: (nextOffset: number) => void;
+  /** Open the encode modal from the empty state — encoding is not a route. */
+  onEncode: () => void;
 }
 
 function initialsOf(name: string | null): string {
@@ -38,6 +40,7 @@ export default function TicketTable({
   limit,
   offset,
   onPageChange,
+  onEncode,
 }: TicketTableProps) {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + tickets.length, total);
@@ -108,12 +111,13 @@ export default function TicketTable({
             <p className="text-sm font-medium text-gray-400">
               No tickets found matching the search criteria.
             </p>
-            <Link
-              href="/tickets/new"
+            <button
+              type="button"
+              onClick={onEncode}
               className="mt-1 text-xs font-bold text-primary-700 hover:underline"
             >
               Encode a new ticket →
-            </Link>
+            </button>
           </div>
         )}
       </div>
@@ -227,12 +231,13 @@ export default function TicketTable({
                     <p className="text-sm text-gray-400 font-medium">
                       No tickets found matching the search criteria.
                     </p>
-                    <Link
-                      href="/tickets/new"
+                    <button
+                      type="button"
+                      onClick={onEncode}
                       className="text-xs font-bold text-primary-700 hover:text-primary-800 hover:underline mt-1"
                     >
                       Encode a new ticket →
-                    </Link>
+                    </button>
                   </div>
                 </td>
               </tr>

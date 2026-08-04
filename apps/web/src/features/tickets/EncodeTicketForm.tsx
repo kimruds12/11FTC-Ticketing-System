@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   TicketStatus,
   encodeTicketSchema,
   type DepartmentDto,
   type MainIssueDto,
 } from "@11ftc/shared";
+import ModalShell from "@/components/ui/ModalShell";
 import AssigneePicker from "./AssigneePicker";
 import EmployeePicker from "./EmployeePicker";
 import { encodeTicketAction } from "./actions";
@@ -32,6 +31,10 @@ import { encodeTicketAction } from "./actions";
 interface EncodeTicketFormProps {
   departments: DepartmentDto[];
   mainIssues: MainIssueDto[];
+  /** Dismiss without saving. */
+  onClose: () => void;
+  /** A ticket was created; the queue behind the modal should refresh. */
+  onCreated: () => void;
 }
 
 function today(): string {
@@ -43,9 +46,9 @@ function today(): string {
 export default function EncodeTicketForm({
   departments,
   mainIssues,
+  onClose,
+  onCreated,
 }: EncodeTicketFormProps) {
-  const router = useRouter();
-
   const [date, setDate] = useState(today());
   const [employeeName, setEmployeeName] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -93,7 +96,10 @@ export default function EncodeTicketForm({
     setSubmitting(false);
 
     if (res.ok) {
-      router.push(`/tickets/${res.data.ticketId}`);
+      // No navigation. The encoder stays on the queue they were reading, which is the whole
+      // point of the modal — recording a ticket should not cost them their place.
+      onCreated();
+      onClose();
       return;
     }
     setFormError(res.error);
@@ -103,35 +109,37 @@ export default function EncodeTicketForm({
   const errCls = "text-[10px] text-red-600 font-bold mt-1.5";
 
   return (
-    /* Scrolling lives on the OVERLAY; centring happens in an inner `min-h-full` flex wrapper.
-       Putting `items-center` and `overflow-y-auto` on the same element is what caused the
-       overlap: once the form is taller than the viewport, centring pushes its top ABOVE the
-       scroll container's origin, where it cannot be scrolled back to. The panel also caps at
-       the viewport height and scrolls its own body, so the header and the submit row stay
-       visible instead of drifting off-screen. */
-    <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-[2px] animate-fade-in overflow-y-auto overscroll-contain">
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative flex w-full max-w-lg max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl animate-scale-in">
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4 md:px-8">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Encode Ticket</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5 tracking-wider">
-              IT Ticketing Operations
-            </p>
-          </div>
-          <Link
-            href="/tickets"
-            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
-            title="Cancel"
+    <ModalShell
+      title="Encode Ticket"
+      eyebrow="IT Ticketing Operations"
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-outline font-bold text-xs py-2.5 px-4 text-gray-500 bg-white"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </Link>
-        </div>
-
-          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 md:px-8">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="encode-ticket-form"
+            disabled={submitting || lookupsMissing}
+            className="btn-primary font-bold text-xs py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {submitting ? "Encoding..." : "Encode Ticket"}
+          </button>
+        </>
+      }
+    >
+      {/* The submit button lives in the shell's footer and reaches back via `form=`, so the
+          action row stays pinned while the body scrolls. */}
+      <form
+        id="encode-ticket-form"
+        onSubmit={handleSubmit}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 md:px-8"
+      >
         {lookupsMissing && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800">
             Departments and main-issue categories must be configured before tickets can be
@@ -291,26 +299,7 @@ export default function EncodeTicketForm({
             {errors.remarks && <p className={errCls}>{errors.remarks}</p>}
           </div>
 
-            </div>
-
-          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-gray-100 bg-white px-6 py-4 md:px-8">
-            <Link
-              href="/tickets"
-              className="btn-outline font-bold text-xs py-2.5 px-4 text-gray-500 bg-white"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={submitting || lookupsMissing}
-              className="btn-primary font-bold text-xs py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {submitting ? "Encoding..." : "Encode Ticket"}
-            </button>
-          </div>
-          </form>
-        </div>
-      </div>
-    </div>
+      </form>
+    </ModalShell>
   );
 }

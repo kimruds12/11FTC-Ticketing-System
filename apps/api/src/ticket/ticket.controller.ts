@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import {
   assignTicketSchema,
+  bulkEncodeTicketSchema,
   closeTicketSchema,
   encodeTicketSchema,
   ticketListQuerySchema,
   updateTicketSchema,
   type AssignTicketDto,
   type AuthContext,
+  type BulkEncodeTicketDto,
   type CloseTicketDto,
   type EncodeTicketDto,
   type TicketDetailDto,
@@ -34,6 +36,18 @@ export class TicketController {
     @CurrentUser() user: AuthContext,
   ): Promise<TicketDto> {
     return this.tickets.encode(dto, user);
+  }
+
+  /**
+   * FR-39 — encode a batch atomically. Declared before any `:id` route so the literal
+   * segment can never be read as a ticket id.
+   */
+  @Post("bulk")
+  encodeBulk(
+    @Body(new ZodValidationPipe(bulkEncodeTicketSchema)) dto: BulkEncodeTicketDto,
+    @CurrentUser() user: AuthContext,
+  ): Promise<TicketDto[]> {
+    return this.tickets.encodeBulk(dto.tickets, user);
   }
 
   @Get()

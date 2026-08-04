@@ -208,6 +208,23 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 > laid out a second time inside a PDF library diverges from the one on screen the first
 > time a column changes. "What prints is what you looked at" is the requirement.
 
+### 4.7 Bulk Encoding
+- FR-39. Encode **several tickets in one submission**, sharing the fields a batch has in common (date, handler, status) and varying only what differs per ticket. The batch is recorded **atomically**: either every ticket in it exists, or none does.
+
+> **This is the requirement the product's purpose implies.** §2 states the system exists to
+> reduce the manual effort of maintaining the ticket log; the department fixes concerns first
+> and writes them up afterwards, usually several at a time from notes. Encoding those one at
+> a time, retyping the same date and the same technician on every one, *is* the manual work
+> being removed. A form that only ever accepts one ticket cannot satisfy the purpose.
+>
+> **Atomicity is not a nicety here, it follows from FR-9.** Nothing can be deleted, so a batch
+> that half-succeeded could not be undone: the encoder would be left guessing which rows
+> landed, and the safe-looking recovery — re-entering what appears to be missing — produces
+> duplicates. One rejected row must therefore reject the batch and write nothing.
+>
+> **Numbering gaps from a rejected batch are accepted**, consistent with the numbering rule
+> that a gap is cosmetic while a duplicate is corruption.
+
 ## 5. Ticket Entity
 
 | Field | Type | Description |
@@ -423,6 +440,7 @@ SyncOutbox ----> Google Sheet (Tickets tab, one-way, newest-first)
 
 | Rev | Change |
 |---|---|
+| **7** | **Bulk encoding specified (§4.7, FR-39).** The one requirement the product's own purpose already implied: §2 exists to reduce the manual effort of maintaining the log, and the department writes up several finished concerns at a time, so encoding them one-by-one — retyping the same date and technician each time — *was* the manual work. Recorded atomically because FR-9 forbids deletion: a half-written batch could not be undone, and re-entering what looked missing would create duplicates. Total: 39 requirements. |
 | **6** | **Report generation specified (§4.6, FR-36–38).** The "Generate Reports" screen existed with no requirement behind it and was built entirely from hardcoded figures, including a badge falsely claiming the numbers were synced with Google Sheets. Rather than delete it, its purpose was settled: the dashboard is the live operational view, a report is a fixed, filtered, exportable **department × period cross-tab**. FR-37 (period list derived from the data) and FR-38 (spreadsheet export + print) are written from the two concrete defects the mock-up had — a hand-written month list that would silently go stale, and export buttons wired to nothing. Total: 38 requirements. |
 | **5** | **Assignment decoupled from accounts (ADR-0017).** `assigned_to` (FK to User) and the `assigned_label` free-text fallback replaced by a **Technician directory** + ordered `TicketAssignee` join. Driven by the real data: two-technician work is 21% of tickets, 74% of handlers held no account, and FR-19 was therefore reporting on 26% of the history while omitting the busiest technician entirely. A technician is an auth-free directory entry like an Employee, resolve-or-created inline during encoding. FR-19 and FR-27 restated; no requirement added or removed. Analytics time series (FR-17, FR-21) gained a `day`/`week`/`month` granularity independent of the window. |
 | **4.1** | **Numbering defect fix.** FR-24 was defined twice — "Ongoing ticket ageing" (§4.3) and "One-way sync" (§4.4) — because the rev 4 renumbering shifted §4.4 by the wrong amount. §4.4 is now FR-25–32 and §4.5 is FR-33–35. All downstream citations in the design doc, traceability matrix, module specs, and plan were corrected; several had also been carrying pre-rev-4 numbers. Total: 35 requirements, no gaps, no duplicates. |

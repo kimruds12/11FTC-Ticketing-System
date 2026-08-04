@@ -54,6 +54,26 @@ export const encodeTicketSchema = z.object({
 });
 export type EncodeTicketDto = z.infer<typeof encodeTicketSchema>;
 
+/**
+ * Bulk encode (FR-39) — a batch recorded in ONE transaction, all or nothing.
+ *
+ * The department fixes concerns first and writes them up afterwards, usually several at a
+ * time from notes, so encoding one-at-a-time is the manual step the system exists to remove.
+ *
+ * All-or-nothing is the deliberate choice. Nothing is ever deleted (FR-9), so a batch that
+ * half-succeeded could not be undone — the encoder would be left guessing which rows landed,
+ * with no way to retry safely. One rejected row fails the batch, names itself, and leaves the
+ * database untouched. Numbering gaps from the rollback are accepted (M3 invariant 5): a gap
+ * is cosmetic, a duplicate is corruption.
+ *
+ * The cap is a guard against a runaway paste, not a product limit; at tens of tickets a day a
+ * batch of 25 is already far beyond a normal shift.
+ */
+export const bulkEncodeTicketSchema = z.object({
+  tickets: z.array(encodeTicketSchema).min(1).max(25),
+});
+export type BulkEncodeTicketDto = z.infer<typeof bulkEncodeTicketSchema>;
+
 /** Field corrections (FR-9). Status/assignment go through their dedicated endpoints. */
 export const updateTicketSchema = z
   .object({

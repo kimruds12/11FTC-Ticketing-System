@@ -99,6 +99,12 @@ is unreadable to the audience it was drawn for. Traceability belongs in a table.
 | FR-37 | Period list derived from encoded data | Generate Report | CMP (`AnalyticsService.coverage`) |
 | FR-38 | Spreadsheet export and print | Generate Report | — (client-side; no server surface) |
 
+### 2.7 Bulk Encoding (SRS §4.7)
+
+| FR | Requirement | Use case | Diagrams |
+|---|---|---|---|
+| FR-39 | Batch encode, atomic | Encode Ticket (batch) | SQ1, CLS (`TicketService.encodeBulk`) |
+
 ---
 
 ## 3. Use cases → SRS sections
@@ -207,6 +213,7 @@ until the module lands.
 | FR-36 | M9 | [M9-analytics.md](implementation/M9-analytics.md) | cross-tab cells + grand total reconciles | tested |
 | FR-37 | M9 | [M9-analytics.md](implementation/M9-analytics.md) | coverage reports real min/max date | tested |
 | FR-38 | M9 (web) | [M9-analytics.md](implementation/M9-analytics.md) | CSV carries filters; print hides chrome | manual |
+| FR-39 | M5 | [M5-ticket.md](implementation/M5-ticket.md) | one bad row → nothing written; consecutive numbers | tested |
 
 **Decisions behind these:** [ADR-0004](adr/0004-atomic-ticket-numbering.md) (FR-4/5),
 [ADR-0005](adr/0005-three-status-terminal-closed-no-delete.md) (FR-1/2/7/8/9),

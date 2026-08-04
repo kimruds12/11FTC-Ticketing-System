@@ -11,6 +11,8 @@ import type {
 import { useDebounce } from "@/hooks/useDebounce";
 import TicketFilters, { type TicketFilterValues } from "./TicketFilters";
 import TicketTable from "./TicketTable";
+import EncodeTicketForm from "./EncodeTicketForm";
+import BulkEncodeForm from "./BulkEncodeForm";
 
 /**
  * Client shell for the ticket queue. Owns the interactive filter state and mirrors it into the
@@ -66,6 +68,17 @@ export default function TicketQueueClient({
   const [filters, setFilters] = useState<TicketFilterValues>(initialFilters);
   const [pageOffset, setPageOffset] = useState(offset);
 
+  /**
+   * Encoding is a modal over this list, never a route.
+   *
+   * `/tickets/new` used to be its own page, which meant a full server round trip — lookups,
+   * layout, shell — before the encoder could type anything, and it dropped them somewhere
+   * else afterwards. The lookups are already on this page for the filter dropdowns, so the
+   * modal opens instantly and the queue is still underneath when it closes.
+   */
+  const [encoding, setEncoding] = useState<null | "single" | "bulk">(null);
+  const [flash, setFlash] = useState<string | null>(null);
+
   // Only the free-text box is debounced; dropdowns and dates apply immediately.
   const debouncedQ = useDebounce(filters.q, 350);
 
@@ -91,6 +104,14 @@ export default function TicketQueueClient({
     setPageOffset(0);
   }
 
+  /** The list is server-rendered, so a new ticket only appears after the server re-runs. */
+  function handleCreated(count: number) {
+    router.refresh();
+    setFlash(
+      count === 1 ? "Ticket encoded." : `${count} tickets encoded in one batch.`,
+    );
+  }
+
   return (
     <div className="space-y-6 w-full px-4 md:px-8 py-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -110,6 +131,22 @@ export default function TicketQueueClient({
         </div>
       )}
 
+      {flash && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+          {flash}
+          <button
+            type="button"
+            onClick={() => setFlash(null)}
+            className="text-green-700 hover:text-green-900"
+            aria-label="Dismiss"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       <TicketFilters
         values={filters}
         onChange={handleFilterChange}
@@ -117,6 +154,8 @@ export default function TicketQueueClient({
         departments={departments}
         mainIssues={mainIssues}
         technicians={technicians}
+        onEncode={() => setEncoding("single")}
+        onBulkEncode={() => setEncoding("bulk")}
       />
 
       <TicketTable
@@ -125,7 +164,26 @@ export default function TicketQueueClient({
         limit={limit}
         offset={offset}
         onPageChange={setPageOffset}
+        onEncode={() => setEncoding("single")}
       />
+
+      {encoding === "single" && (
+        <EncodeTicketForm
+          departments={departments}
+          mainIssues={mainIssues}
+          onClose={() => setEncoding(null)}
+          onCreated={() => handleCreated(1)}
+        />
+      )}
+
+      {encoding === "bulk" && (
+        <BulkEncodeForm
+          departments={departments}
+          mainIssues={mainIssues}
+          onClose={() => setEncoding(null)}
+          onCreated={handleCreated}
+        />
+      )}
     </div>
   );
 }
