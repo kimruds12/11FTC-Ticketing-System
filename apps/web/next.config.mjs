@@ -21,6 +21,23 @@ const nextConfig = {
   outputFileTracingRoot: monorepoRoot,
   // @11ftc/shared ships built dist ESM; transpiling it keeps Next's target handling simple.
   transpilePackages: ["@11ftc/shared"],
+  /**
+   * POLL for file changes instead of relying on filesystem events.
+   *
+   * Dev runs in Docker with the Windows host tree bind-mounted, and inotify events do not
+   * cross that boundary. docker-compose already sets CHOKIDAR_USEPOLLING and
+   * WATCHPACK_POLLING, but those are chokidar/webpack variables and this app runs on
+   * TURBOPACK (Next 16's default dev bundler), which reads neither. The result was a dev
+   * server that served the code it started with: an edit that was definitely on disk — and
+   * verifiably present inside the container — never reached the browser, so a fix appeared
+   * not to work and the honest conclusion "no change" was wrong.
+   *
+   * `watchOptions.pollIntervalMs` is the bundler-agnostic switch Next added for exactly this.
+   * Costs a little CPU; only applies to `next dev`.
+   */
+  watchOptions: {
+    pollIntervalMs: 500,
+  },
 };
 
 export default nextConfig;

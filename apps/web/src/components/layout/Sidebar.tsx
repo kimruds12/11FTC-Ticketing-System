@@ -9,9 +9,15 @@ import { UserRole } from "@11ftc/shared";
 interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  /**
+   * Fired when a destination is chosen. On desktop the sidebar is permanent and this is a
+   * no-op; on a phone it is what dismisses the drawer, which otherwise stays open on top of
+   * the page it just navigated to.
+   */
+  onNavigate?: () => void;
 }
 
-export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ isCollapsed, onToggleCollapse, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.auth.role);
 
@@ -135,7 +141,8 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
               <div key={item.href} className="group relative">
                 <Link
                   href={item.href}
-                  className={`flex items-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-200 ${
+                  onClick={onNavigate}
+                  className={`nav-touch flex items-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-200 ${
                     isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
                   } ${
                     active
