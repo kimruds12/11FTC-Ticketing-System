@@ -39,6 +39,7 @@ interface DraftRow {
   departmentId: string;
   mainIssueId: string;
   concern: string;
+  remarks: string;
 }
 
 const MAX_ROWS = 25; // mirrors bulkEncodeTicketSchema
@@ -56,6 +57,7 @@ const emptyRow = (): DraftRow => ({
   departmentId: "",
   mainIssueId: "",
   concern: "",
+  remarks: "",
 });
 
 export default function BulkEncodeForm({
@@ -78,7 +80,11 @@ export default function BulkEncodeForm({
 
   /** A row the encoder started but did not finish is dropped, not rejected. */
   const isBlank = (r: DraftRow) =>
-    !r.employeeName.trim() && !r.concern.trim() && !r.departmentId && !r.mainIssueId;
+    !r.employeeName.trim() &&
+    !r.concern.trim() &&
+    !r.remarks.trim() &&
+    !r.departmentId &&
+    !r.mainIssueId;
   const filled = rows.filter((r) => !isBlank(r));
 
   function patchRow(key: string, patch: Partial<DraftRow>) {
@@ -127,7 +133,9 @@ export default function BulkEncodeForm({
         concern: r.concern,
         status,
         assignees,
-        remarks: null,
+        // Empty stays NULL rather than "": the sheet's Remarks column holds real
+        // troubleshooting text, and a blank string would overwrite it with nothing.
+        remarks: r.remarks.trim() || null,
       })),
     };
 
@@ -336,7 +344,7 @@ export default function BulkEncodeForm({
                       )}
                     </div>
 
-                    <div className="lg:col-span-5">
+                    <div className="lg:col-span-3">
                       <label className={labelCls}>Concern</label>
                       <input
                         type="text"
@@ -349,6 +357,22 @@ export default function BulkEncodeForm({
                       />
                       {index >= 0 && err(index, "concern") && (
                         <p className={errCls}>{err(index, "concern")}</p>
+                      )}
+                    </div>
+
+                    <div className="lg:col-span-2">
+                      <label className={labelCls}>Remarks</label>
+                      <input
+                        type="text"
+                        value={row.remarks}
+                        onChange={(e) => patchRow(row.key, { remarks: e.target.value })}
+                        placeholder="Optional"
+                        className={`input w-full text-sm ${
+                          index >= 0 && err(index, "remarks") ? "border-red-500" : ""
+                        }`}
+                      />
+                      {index >= 0 && err(index, "remarks") && (
+                        <p className={errCls}>{err(index, "remarks")}</p>
                       )}
                     </div>
                   </div>

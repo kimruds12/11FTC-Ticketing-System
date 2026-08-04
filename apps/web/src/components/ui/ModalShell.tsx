@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * The one overlay used by every modal in the app.
@@ -31,6 +32,29 @@ export default function ModalShell({
   /** Tailwind max-width class. Bulk needs more room than a single ticket. */
   width?: string;
 }) {
+  /**
+   * Rendered through a PORTAL onto `document.body`.
+   *
+   * `position: fixed; inset: 0` only spans the viewport when no ancestor has turned itself
+   * into the containing block, and only paints above the app chrome when no ancestor has
+   * opened a stacking context that traps it. The modal is mounted deep inside the page — under
+   * the layout wrapper, the scroll column and `<main>` — so any transform, filter, backdrop
+   * filter, `will-change` or `contain` added anywhere along that chain silently clips it. That
+   * is what left the fixed 64px header undimmed above the overlay: a `z-index: 9999` that
+   * cannot escape its parent context loses to a `z-index: 30` that sits in the root one.
+   *
+   * As a direct child of `<body>` there is no chain to trap it, so the tint covers the whole
+   * viewport regardless of what the page layout does later. Same reason `DirectoryPicker`
+   * portals its dropdown.
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // Portals need a real DOM node, which does not exist during SSR; mounting on the client
+    // avoids a hydration mismatch between "no overlay" and "overlay".
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe portal mount
+    setMounted(true);
+  }, []);
+
   // Escape closes, and the page behind must not scroll while the overlay is up — otherwise
   // dismissing the modal leaves you somewhere else in the list than where you opened it.
   useEffect(() => {
@@ -46,9 +70,11 @@ export default function ModalShell({
     };
   }, [onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-[9999] overflow-y-auto overscroll-contain bg-slate-900/60 backdrop-blur-[2px] animate-fade-in"
+      className="fixed inset-0 z-[9999] overflow-y-auto overscroll-contain bg-slate-900/60 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -87,6 +113,7 @@ export default function ModalShell({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
