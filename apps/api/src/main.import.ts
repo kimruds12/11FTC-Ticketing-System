@@ -139,15 +139,13 @@ async function bootstrap(): Promise<void> {
       dryRun: !args.commit,
       actorEmail: args.actor,
       blankStatus: args.blankStatus,
-      // A data-entry artefact fills the assignee column of the 55 oldest rows; the IT team
-      // confirmed those tickets were Patrick's.
-      //
-      // BOTH values are mapped because THE CELL VALUE CHANGED between exports: it read "19"
-      // when the import was written and "29" in the 2026-08-04 export, across all 55 rows.
-      // Whatever produces it in the sheet is not a literal, so a future export may well show
-      // a third number. The importer now REPORTS any unaliased numeric assignee rather than
-      // silently creating a technician named after it.
-      assigneeAliases: { "19": "Patrick", "29": "Patrick" },
+      assigneeAliases: {},
+      // The assignee column of the 55 oldest rows is a FORMULA, not a literal. The same 55
+      // rows read "19", then "29", then "22" across three exports, so exact-match aliasing
+      // is unwinnable — there is no fixed value to alias. The count is stable at 55 and the
+      // IT team confirmed those tickets were Patrick's, so the rule matches the SHAPE of the
+      // value. Every substitution is listed in the report.
+      numericAssignee: "Patrick",
     });
     printReport(report, args.sheet);
   } finally {

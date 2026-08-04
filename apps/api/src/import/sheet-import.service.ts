@@ -58,8 +58,18 @@ export interface ImportOptions {
   actorEmail?: string;
   /** What to use for rows the sheet left blank. */
   blankStatus: TicketStatus;
-  /** Sheet assignee text that maps to a real person (e.g. "19" → "Patrick"). */
+  /** Sheet assignee text that maps to a real person, matched exactly. */
   assigneeAliases: Record<string, string>;
+  /**
+   * Who a PURELY NUMERIC assignee belongs to.
+   *
+   * The assignee column of the 55 oldest rows is a formula, not a literal: it has read "19",
+   * "29" and "22" across three exports of the same rows. Exact-match aliasing therefore
+   * cannot work — the value is different every time the sheet is exported. The count is
+   * stable at 55 and the IT team confirmed those tickets were Patrick's, so the rule is on
+   * the SHAPE of the value, not its content. Every occurrence is reported.
+   */
+  numericAssignee?: string;
 }
 
 export interface ImportReport {
@@ -378,19 +388,24 @@ export class SheetImportService {
       if (names.length === 0) continue;
       if (names.length > 1) report.multiAssigneeRows++;
 
-      // A purely numeric assignee is a data-entry artefact, not a person, and creating a
-      // technician called "29" pollutes the directory picker permanently — nothing is ever
-      // deleted (FR-9). The known artefacts are aliased in main.import.ts; anything else
-      // numeric is reported so it can be aliased rather than silently becoming a technician.
-      for (const n of names.filter((x) => /^\d+$/.test(x))) {
+      // A purely numeric assignee is the spreadsheet's data-entry artefact, not a person.
+      // Left alone it becomes a technician called "22" sitting in the directory picker
+      // forever, because nothing is ever deleted (FR-9). Resolved by SHAPE rather than by
+      // value: the value is a formula result and differs on every export.
+      const resolved = names.map((n) => {
+        if (!/^\d+$/.test(n)) return n;
+        const to = opts.numericAssignee;
         report.problems.push(
-          `row ${c.rowNum} (${c.ticketNo}): assignee ${JSON.stringify(n)} is a number, not a ` +
-            `name — add it to assigneeAliases or it becomes a technician called "${n}"`,
+          to
+            ? `row ${c.rowNum} (${c.ticketNo}): numeric assignee ${JSON.stringify(n)} → ${to}`
+            : `row ${c.rowNum} (${c.ticketNo}): assignee ${JSON.stringify(n)} is a number, not ` +
+              `a name — set numericAssignee or it becomes a technician called "${n}"`,
         );
-      }
+        return to ?? n;
+      });
 
-      assigneesByTicket.set(c.ticketNo, names);
-      for (const n of names) wantedTechs.set(normalizeName(n), n);
+      assigneesByTicket.set(c.ticketNo, resolved);
+      for (const n of resolved) wantedTechs.set(normalizeName(n), n);
     }
 
     const technicianIds = new Map<string, string>();
