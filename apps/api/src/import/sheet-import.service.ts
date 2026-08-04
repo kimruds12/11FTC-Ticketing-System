@@ -34,6 +34,23 @@ function splitAssignees(raw: string): string[] {
 
 const lower = (s: string) => s.toLowerCase().trim();
 
+/**
+ * What an imported ticket gets when the sheet left the cell blank. A ticket is never dropped
+ * for a missing name or department — losing a real ticket is far worse than attributing it to
+ * a placeholder — but the operator is told, and the placeholders are spelled ONCE so the
+ * disambiguation pass and the candidate pass cannot disagree about them.
+ */
+const UNKNOWN_EMPLOYEE = "Unknown";
+const UNSPECIFIED_DEPARTMENT = "(Unspecified)";
+
+/**
+ * Truthiness, not `??`. The reader trims cells, so a cell of only spaces arrives as `""` —
+ * which `??` passes straight through and which would become an employee whose name is the
+ * empty string.
+ */
+const orElse = (value: string | undefined, fallback: string): string =>
+  value && value.trim() ? value : fallback;
+
 export interface ImportOptions {
   /** Default. Runs the whole import in a transaction and rolls it back. */
   dryRun: boolean;
@@ -62,6 +79,26 @@ export interface ImportReport {
 }
 
 class RollbackSignal extends Error {}
+
+/**
+ * A row that passed validation, with the blank-cell fallbacks ALREADY APPLIED.
+ *
+ * This type exists to close a silent-attribution bug. The disambiguation pass and the
+ * candidate pass used to read columns C and D independently: the first skipped a row whose
+ * name or department was blank, the second substituted a placeholder and imported it anyway.
+ * So a "Karen" row with a blank department never registered Karen as appearing in a second
+ * department, "karen" was not flagged as colliding, and that ticket was attached to the
+ * existing Karen — silently crediting it to HER department in FR-18. Resolving once, here,
+ * makes the two passes structurally incapable of disagreeing.
+ */
+interface ValidRow {
+  row: SheetRow;
+  ticketNo: string;
+  /** Column C, or `UNKNOWN_EMPLOYEE`. Pre-disambiguation. */
+  employeeName: string;
+  /** Column D, or `UNSPECIFIED_DEPARTMENT`. */
+  departmentName: string;
+}
 
 /** One validated sheet row, ready to become a ticket. */
 interface Candidate {
@@ -145,8 +182,8 @@ export class SheetImportService {
 
     const actorId = await this.resolveActor(opts.actorEmail, tx);
 
-    /* ---- 1. validate rows ------------------------------------------------ */
-    const raw: SheetRow[] = [];
+    /* ---- 1. validate rows, and resolve blank cells ONCE ------------------ */
+    const raw: ValidRow[] = [];
     for (const row of rows) {
       if (row.rowNum === 1) continue; // header
       const no = row.cells[COL.ticketNo] ?? "";
@@ -161,20 +198,37 @@ export class SheetImportService {
         report.problems.push(`row ${row.rowNum} (${no}): unreadable date — skipped`);
         continue;
       }
-      raw.push(row);
+
+      // Blank name/department is NOT a reason to drop the ticket, but it IS something the
+      // operator has to see: the row lands under a placeholder, which quietly distorts the
+      // FR-18 department split until someone fills the cell in and re-imports.
+      const employeeName = orElse(row.cells[COL.employee], UNKNOWN_EMPLOYEE);
+      const departmentName = orElse(row.cells[COL.department], UNSPECIFIED_DEPARTMENT);
+      const missing: string[] = [];
+      if (!row.cells[COL.employee]?.trim()) missing.push("employee");
+      if (!row.cells[COL.department]?.trim()) missing.push("department");
+      if (missing.length) {
+        report.problems.push(
+          `row ${row.rowNum} (${no}): blank ${missing.join(" and ")} — ` +
+            `imported as "${employeeName}" / "${departmentName}"`,
+        );
+      }
+
+      raw.push({ row, ticketNo: no, employeeName, departmentName });
     }
 
     /* ---- 2. which employee names need disambiguating? -------------------- */
     // `UNIQUE (name_normalized)` is global (ADR-0007), so one "Karen" can hold one department.
     // Names appearing under several departments are different people and must not merge.
+    //
+    // Every valid row participates — including the ones that fell back to a placeholder. A row
+    // excluded here but imported below is exactly how a ticket gets silently filed under
+    // another department's Karen.
     const deptsByName = new Map<string, Set<string>>();
-    for (const row of raw) {
-      const name = row.cells[COL.employee];
-      const dept = row.cells[COL.department];
-      if (!name || !dept) continue;
-      const key = normalizeName(name);
+    for (const { employeeName, departmentName } of raw) {
+      const key = normalizeName(employeeName);
       if (!deptsByName.has(key)) deptsByName.set(key, new Set());
-      deptsByName.get(key)!.add(dept);
+      deptsByName.get(key)!.add(departmentName);
     }
     const colliding = new Set(
       [...deptsByName.entries()].filter(([, d]) => d.size > 1).map(([n]) => n),
@@ -182,12 +236,9 @@ export class SheetImportService {
 
     /* ---- 3. build candidates -------------------------------------------- */
     const candidates: Candidate[] = [];
-    for (const row of raw) {
-      const ticketNo = row.cells[COL.ticketNo]!;
+    for (const { row, ticketNo, employeeName: rawName, departmentName } of raw) {
       const m = TICKET_NO.exec(ticketNo)!;
       const serial = Number(row.cells[COL.date]);
-      const departmentName = row.cells[COL.department] ?? "(Unspecified)";
-      const rawName = row.cells[COL.employee] ?? "Unknown";
       const employeeName = colliding.has(normalizeName(rawName))
         ? `${rawName} (${departmentName})`
         : rawName;

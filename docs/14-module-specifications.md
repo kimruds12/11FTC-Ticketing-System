@@ -373,7 +373,8 @@ carried into a meeting. FR-36–38 exist to say what the page is actually for.
 ### Contract
 An **offline CLI**, run by hand before go-live, that loads the department's existing
 spreadsheet history into Postgres so analytics (M9) covers it. Reads a **file export**
-(`.xlsx`/`.csv`), never the live Sheets API.
+(`.xlsx` — the reader is xlsx-only despite ADR-0015 also mentioning `.csv`), never the live
+Sheets API.
 
 ```
 pnpm import:sheet -- --file <path> --dry-run     # report only, zero writes
@@ -423,6 +424,16 @@ Only the `Tickets` tab is in scope. `Task`, `Pending`, `Released units`, `Printe
    import is permanent; the first `--commit` runs against a database copy, not production.
 7. **Numbering allocation is bypassed, not reimplemented.** The importer inserts a known
    `ticket_no`/`sequence_number` directly; it must not call `NumberingService.next()`.
+8. **A blank cell is never dropped and never silent.** A row missing an employee or department
+   is still imported — under `Unknown` / `(Unspecified)` — *and* reported. Losing a real ticket
+   over an empty cell is worse than a placeholder, but a placeholder nobody is told about
+   distorts FR-18 indefinitely.
+9. **Blank-cell fallbacks are resolved ONCE, before any pass reads them.** Two passes deciding
+   independently is what caused the bug this invariant exists for: the disambiguation pass
+   skipped rows with a blank name/department while the candidate pass placeholdered and
+   imported them, so a `Karen` row with no department never registered Karen as appearing in a
+   second department — and her ticket was silently filed under the *other* Karen's department.
+   Regression test: `sheet-import.concurrency.spec.ts`.
 
 ### Mapping decisions (confirmed with the IT team)
 
