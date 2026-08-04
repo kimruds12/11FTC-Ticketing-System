@@ -377,6 +377,18 @@ export class SheetImportService {
       const names = splitAssignees(aliased);
       if (names.length === 0) continue;
       if (names.length > 1) report.multiAssigneeRows++;
+
+      // A purely numeric assignee is a data-entry artefact, not a person, and creating a
+      // technician called "29" pollutes the directory picker permanently — nothing is ever
+      // deleted (FR-9). The known artefacts are aliased in main.import.ts; anything else
+      // numeric is reported so it can be aliased rather than silently becoming a technician.
+      for (const n of names.filter((x) => /^\d+$/.test(x))) {
+        report.problems.push(
+          `row ${c.rowNum} (${c.ticketNo}): assignee ${JSON.stringify(n)} is a number, not a ` +
+            `name — add it to assigneeAliases or it becomes a technician called "${n}"`,
+        );
+      }
+
       assigneesByTicket.set(c.ticketNo, names);
       for (const n of names) wantedTechs.set(normalizeName(n), n);
     }
