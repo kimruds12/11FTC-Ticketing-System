@@ -20,7 +20,8 @@ import {
   monthStart,
   type MonthKey,
 } from "./period";
-import { downloadCsv, reportToCsv } from "./csv";
+import { downloadCsv } from "@/lib/utils";
+import { reportToCsv } from "./csv";
 
 const GRANULARITIES: Array<{ key: Granularity; label: string }> = [
   { key: "month", label: "Monthly" },

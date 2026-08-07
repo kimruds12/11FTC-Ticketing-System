@@ -225,6 +225,24 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 > **Numbering gaps from a rejected batch are accepted**, consistent with the numbering rule
 > that a gap is cosmetic while a duplicate is corruption.
 
+### 4.8 Audit Review
+- FR-40. Review the audit log **across tickets** — searchable by ticket number, field, value or actor, filterable by action and by the date the change was made, paginated on the server. Restricted to the **IT Administrator**.
+
+> §4.5 already requires the entries to be *written*; without a way to read them across
+> tickets they were only visible one ticket at a time, on that ticket's own page. The
+> screen that claimed to offer this was built over an empty placeholder array, so an
+> administrator asking "who changed a status yesterday?" had no answer even though the
+> data existed.
+>
+> **Filtering belongs on the server.** The audit table is the one dataset that only ever
+> grows — nothing is deleted (FR-35) and every edit appends a row per changed field — so
+> fetching it into the browser to filter there has no ceiling.
+>
+> **Read-only, and deliberately so.** No route may create, edit or delete an entry; they
+> are written only as a side effect of the change they describe (FR-34). Restricting this
+> to the administrator was confirmed with the department: reviewing who changed what is an
+> oversight function, not part of encoding.
+
 ## 5. Ticket Entity
 
 | Field | Type | Description |
@@ -440,6 +458,7 @@ SyncOutbox ----> Google Sheet (Tickets tab, one-way, newest-first)
 
 | Rev | Change |
 |---|---|
+| **8** | **Audit review specified (§4.8, FR-40).** FR-33–35 required the entries to be written but nothing required them to be *readable across tickets*, so the only view was one ticket's own history. The "Audit Logs" screen that appeared to fill the gap rendered a filter toolbar over an empty placeholder array. Recorded now with server-side filtering (the table only grows), read-only (FR-34/35), and restricted to the IT Administrator per the department's decision. Total: 40 requirements. |
 | **7** | **Bulk encoding specified (§4.7, FR-39).** The one requirement the product's own purpose already implied: §2 exists to reduce the manual effort of maintaining the log, and the department writes up several finished concerns at a time, so encoding them one-by-one — retyping the same date and technician each time — *was* the manual work. Recorded atomically because FR-9 forbids deletion: a half-written batch could not be undone, and re-entering what looked missing would create duplicates. Total: 39 requirements. |
 | **6** | **Report generation specified (§4.6, FR-36–38).** The "Generate Reports" screen existed with no requirement behind it and was built entirely from hardcoded figures, including a badge falsely claiming the numbers were synced with Google Sheets. Rather than delete it, its purpose was settled: the dashboard is the live operational view, a report is a fixed, filtered, exportable **department × period cross-tab**. FR-37 (period list derived from the data) and FR-38 (spreadsheet export + print) are written from the two concrete defects the mock-up had — a hand-written month list that would silently go stale, and export buttons wired to nothing. Total: 38 requirements. |
 | **5** | **Assignment decoupled from accounts (ADR-0017).** `assigned_to` (FK to User) and the `assigned_label` free-text fallback replaced by a **Technician directory** + ordered `TicketAssignee` join. Driven by the real data: two-technician work is 21% of tickets, 74% of handlers held no account, and FR-19 was therefore reporting on 26% of the history while omitting the busiest technician entirely. A technician is an auth-free directory entry like an Employee, resolve-or-created inline during encoding. FR-19 and FR-27 restated; no requirement added or removed. Analytics time series (FR-17, FR-21) gained a `day`/`week`/`month` granularity independent of the window. |

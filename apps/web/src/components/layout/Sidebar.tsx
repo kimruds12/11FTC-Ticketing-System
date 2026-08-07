@@ -83,7 +83,10 @@ export default function Sidebar({ isCollapsed, onToggleCollapse, onNavigate }: S
             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
       ),
-      visible: true,
+      // Admin only, confirmed with the department: monitoring who changed what is an
+      // oversight function, not part of encoding. Cosmetic only — the API's RolesGuard on
+      // /audit-logs is the boundary (ADR-0011).
+      visible: role === UserRole.IT_ADMINISTRATOR,
     },
   ];
 
