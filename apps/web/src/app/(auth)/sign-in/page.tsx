@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { SignInButton } from "@/features/auth/components/SignInButton";
+import { SignInForm } from "@/features/auth/components/SignInForm";
 
 export const metadata: Metadata = {
   title: "Sign In — FTraCe",
@@ -9,9 +9,17 @@ export const metadata: Metadata = {
 };
 
 /**
- * Sign-in screen (M1). Internal-only: the sole path in is Google OAuth (ADR-0013) — there are
- * no passwords and no self-registration. Authorization is the `public.users` allowlist, so a
- * non-invited Gmail authenticates but the app shell then rejects it as not-authorized.
+ * Sign-in screen (M1). Internal-only: email + password (ADR-0018, superseding ADR-0013).
+ *
+ * Google OAuth was dropped because the system deploys to a self-hosted Supabase on the
+ * company's internal network with no purchased domain, and Google rejects redirect URIs on
+ * private IPs and non-public TLDs. There is no self-registration — accounts are provisioned
+ * by an administrator, who also sets the initial password, since an isolated network has no
+ * mail server to send an invite through.
+ *
+ * Authentication and authorization stay separate: signing in proves who you are, and the
+ * `public.users` allowlist decides whether you may in. An account without a row authenticates
+ * and is then rejected by the app shell as not-authorized.
  */
 export default async function SignInPage({
   searchParams,
@@ -80,11 +88,11 @@ export default async function SignInPage({
           IT department — internal access only
         </p>
 
-        {/* Allowlist / OAuth error surfaced by the app shell (ADR-0013). */}
+        {/* Surfaced by the app shell: authenticated, but not on the `public.users` allowlist. */}
         {error === "not-authorized" ? (
           <p className="mb-6 rounded-lg border border-amber-400/30 bg-amber-500/15 p-3 text-sm text-amber-100">
-            Your Google account isn&apos;t authorized for this system. Contact an IT
-            administrator to be invited.
+            That account isn&apos;t authorized for this system. Ask an IT administrator to
+            invite you.
           </p>
         ) : error ? (
           <p className="mb-6 rounded-lg border border-red-400/30 bg-red-500/15 p-3 text-sm text-red-100">
@@ -92,7 +100,7 @@ export default async function SignInPage({
           </p>
         ) : null}
 
-        <SignInButton next="/dashboard" />
+        <SignInForm next="/dashboard" />
       </div>
     </div>
   );

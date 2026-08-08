@@ -4,9 +4,12 @@ import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 
 /**
- * Server Supabase client — for Server Components, Server Actions, route handlers, and the
- * `/auth/callback` code exchange. Bound to the request cookie store (Next 16: `cookies()`
- * is async). Auth only; anon key only.
+ * Server Supabase client — for Server Components, Server Actions and route handlers. Bound to
+ * the request cookie store (Next 16: `cookies()` is async). Auth only; anon key only.
+ *
+ * No longer serves an OAuth code exchange: sign-in is email + password (ADR-0018), which
+ * sets the session directly, so `/auth/callback` was removed rather than left as a route
+ * nothing reaches.
  */
 export async function getServerSupabase() {
   const cookieStore = await cookies();
