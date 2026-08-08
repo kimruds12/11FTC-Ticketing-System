@@ -6,8 +6,10 @@ import { UserRole } from "../enums.js";
  * returns from `GET /me`. Source of truth for both apps: the backend builds it in
  * `AuthGuard`; the web app reads it to seed its client-side auth state (cosmetic RBAC).
  *
- * This is a RESPONSE/context contract only. There is no login DTO here — sign-in is Google
- * OAuth handled by Supabase in the browser; the API never receives credentials (ADR-0013).
+ * This is a RESPONSE/context contract only. There is no login DTO here: sign-in is email +
+ * password handled by Supabase Auth in the browser (ADR-0018), so the API never receives
+ * credentials. The one exception is `POST /me/password`, which needs the current password to
+ * authorize a change — see `changePasswordSchema` in master-data.dto.
  */
 export const authContextSchema = z.object({
   /** `public.users.user_id` — OUR user PK, not the Supabase auth UID. */

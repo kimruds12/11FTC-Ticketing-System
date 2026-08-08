@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { UserRole } from "@11ftc/shared";
-import { setSession } from "@/store/slices/authSlice";
+import { clearSession } from "@/store/slices/authSlice";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 
 /**
  * Application Header
@@ -74,6 +75,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   
   const role = useAppSelector((state) => state.auth.role);
   const fullName = useAppSelector((state) => state.auth.fullName);
+  const email = useAppSelector((state) => state.auth.email);
   const isDashboard = pathname === "/dashboard";
   const meta = routeMeta[pathname] ?? { breadcrumb: ["11FTC"], title: "FTraCe" };
 
@@ -110,35 +112,20 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
 
   /* ── Profile dropdown ────────────────────────────── */
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  const userId = useAppSelector((state) => state.auth.userId);
-
-  // Profile settings local state fields
-  const [modalFullName, setModalFullName] = useState(fullName || "");
-  const [modalUsername, setModalUsername] = useState("");
-  const [modalEmail, setModalEmail] = useState("");
-  const [modalPassword, setModalPassword] = useState("");
-  const [modalConfirmPassword, setModalConfirmPassword] = useState("");
-
-  // Seed the modal fields from the current identity when it opens. Done in the open handler
-  // (an event) rather than an effect — resetting React state inside an effect triggers the
-  // cascading-render the react-hooks lint rule warns about.
-  const openProfileModal = () => {
-    setModalFullName(fullName || "");
-    setModalUsername(role === UserRole.IT_ADMINISTRATOR ? "admin" : "staff");
-    setModalEmail(role === UserRole.IT_ADMINISTRATOR ? "admin@gmail.com" : "staff@gmail.com");
-    setModalPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
-    setModalConfirmPassword(role === UserRole.IT_ADMINISTRATOR ? "admin123" : "staff123");
-    setShowProfileModal(true);
-  };
-
-  const handleSaveProfile = () => {
-    if (userId && role) {
-      dispatch(setSession({ userId, role, fullName: modalFullName }));
-    }
-    setShowProfileModal(false);
+  /**
+   * Sign out for real.
+   *
+   * This used to be `router.push("/sign-in")` and nothing else — the Supabase session cookie
+   * survived, so the app shell saw a valid session and sent the user straight back to the
+   * dashboard. Clicking "Logout" left you signed in.
+   */
+  const handleSignOut = async () => {
+    await getBrowserSupabase().auth.signOut();
+    dispatch(clearSession());
+    router.push("/sign-in");
+    router.refresh();
   };
 
   useEffect(() => {
@@ -406,19 +393,31 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
                 <p className="text-sm font-semibold text-gray-900">
                   {fullName || (role === UserRole.IT_ADMINISTRATOR ? "Admin User" : "IT Staff")}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {role === UserRole.IT_ADMINISTRATOR ? "admin@gmail.com" : "staff@gmail.com"}
-                </p>
+                {/* The REAL address from the verified session. This used to render a
+                    hardcoded admin@gmail.com / staff@gmail.com — invented data shown as the
+                    user's own identity. */}
+                <p className="text-xs text-gray-400 mt-0.5">{email ?? "—"}</p>
               </div>
 
               {/* Menu Items */}
               <div className="py-1">
-                <button className="dropdown-item w-full text-left" role="menuitem" onClick={() => { openProfileModal(); setShowProfileDropdown(false); }}>
+                <button className="dropdown-item w-full text-left" role="menuitem" onClick={() => { setShowProfileDropdown(false); router.push("/account"); }}>
                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                       d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                   Profile
+                </button>
+                <button
+                  className="dropdown-item w-full text-left"
+                  role="menuitem"
+                  onClick={() => { setShowProfileDropdown(false); router.push("/account"); }}
+                >
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Change password
                 </button>
               </div>
 
@@ -427,7 +426,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
               <button 
                 className="w-full text-left px-4 py-2.5 text-sm text-red-600 font-semibold flex items-center gap-2 hover:bg-red-800 hover:text-white transition-all duration-150 rounded-b-xl" 
                 role="menuitem" 
-                onClick={() => { setShowProfileDropdown(false); router.push("/sign-in"); }}
+                onClick={() => { setShowProfileDropdown(false); void handleSignOut(); }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -440,176 +439,6 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
         </div>
       </div>
     </header>
-
-      {/* ── Profile Settings Modal ────────────────────────────────────────── */}
-      {showProfileModal && (
-        <>
-          {/* Backdrop — dark overlay behind the modal, clicking it closes */}
-          <div
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[9998] transition-opacity"
-            onClick={() => setShowProfileModal(false)}
-            aria-hidden="true"
-          />
-
-          {/* Modal container — always centered on screen */}
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none">
-            <div
-              className="bg-white rounded-2xl border border-gray-200 shadow-2xl w-full max-w-md pointer-events-auto animate-scale-in overflow-hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="profile-modal-title"
-            >
-              {/* ── Header ────────────────────────────────────── */}
-              <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary-50 flex items-center justify-center text-primary-700">
-                    <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 id="profile-modal-title" className="text-base font-bold text-gray-900">
-                      Profile Settings
-                    </h2>
-                    <p className="text-[10px] text-gray-400 font-medium mt-0.5 uppercase tracking-wider">
-                      {role === UserRole.IT_ADMINISTRATOR ? "Administrator Account" : "IT Staff Account — View Only"}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowProfileModal(false)}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-                  aria-label="Close profile settings"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* ── Body ──────────────────────────────────────── */}
-              <div className="px-6 py-5 max-h-[calc(100vh-220px)] overflow-y-auto">
-                {/* Avatar section */}
-                <div className="flex flex-col items-center gap-2 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xl font-bold border-2 border-primary-200 shadow-sm">
-                    {modalFullName ? modalFullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "IT"}
-                  </div>
-                  {role === UserRole.IT_ADMINISTRATOR && (
-                    <button className="text-[10px] font-bold text-primary-700 hover:text-primary-800 uppercase tracking-wider transition-colors">
-                      Change Picture
-                    </button>
-                  )}
-                  {role === UserRole.IT_STAFF && (
-                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                      IT Support Team Member
-                    </span>
-                  )}
-                </div>
-
-                {/* Fields */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      value={modalFullName}
-                      onChange={(e) => setModalFullName(e.target.value)}
-                      disabled={role === UserRole.IT_STAFF}
-                      className="input w-full font-semibold text-sm disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                      Username
-                    </label>
-                    <input
-                      type="text"
-                      value={modalUsername}
-                      onChange={(e) => setModalUsername(e.target.value)}
-                      disabled={role === UserRole.IT_STAFF}
-                      className="input w-full font-semibold text-sm disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={modalEmail}
-                      onChange={(e) => setModalEmail(e.target.value)}
-                      disabled={role === UserRole.IT_STAFF}
-                      className="input w-full font-semibold text-sm disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  {role === UserRole.IT_ADMINISTRATOR && (
-                    <>
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                          New Password
-                        </label>
-                        <input
-                          type="password"
-                          value={modalPassword}
-                          onChange={(e) => setModalPassword(e.target.value)}
-                          className="input w-full font-semibold text-sm"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                          Confirm Password
-                        </label>
-                        <input
-                          type="password"
-                          value={modalConfirmPassword}
-                          onChange={(e) => setModalConfirmPassword(e.target.value)}
-                          className="input w-full font-semibold text-sm"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Staff info banner */}
-                {role === UserRole.IT_STAFF && (
-                  <div className="flex items-center gap-2 mt-5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                    <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                    <p className="text-[11px] text-amber-700 font-semibold">
-                      Profile details are read-only. Contact your IT Administrator to update account settings.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Footer ────────────────────────────────────── */}
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
-                <button
-                  onClick={() => setShowProfileModal(false)}
-                  className="btn-outline font-bold text-xs py-2 px-4 bg-white text-gray-500"
-                >
-                  {role === UserRole.IT_ADMINISTRATOR ? "Cancel" : "Close"}
-                </button>
-                {role === UserRole.IT_ADMINISTRATOR && (
-                  <button
-                    onClick={handleSaveProfile}
-                    className="btn-primary font-bold text-xs py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
-                  >
-                    Save Details
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 }

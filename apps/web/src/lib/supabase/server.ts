@@ -2,15 +2,21 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+import { AUTH_COOKIE_NAME } from "./cookie-name";
 
 /**
- * Server Supabase client — for Server Components, Server Actions, route handlers, and the
- * `/auth/callback` code exchange. Bound to the request cookie store (Next 16: `cookies()`
- * is async). Auth only; anon key only.
+ * Server Supabase client — for Server Components, Server Actions and route handlers. Bound to
+ * the request cookie store (Next 16: `cookies()` is async). Auth only; anon key only.
+ *
+ * No longer serves an OAuth code exchange: sign-in is email + password (ADR-0018), which
+ * sets the session directly, so `/auth/callback` was removed rather than left as a route
+ * nothing reaches.
  */
 export async function getServerSupabase() {
   const cookieStore = await cookies();
-  return createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
+  return createServerClient(env.supabaseInternalUrl, env.supabaseAnonKey, {
+    // Must match the browser client exactly — see cookie-name.ts.
+    cookieOptions: { name: AUTH_COOKIE_NAME },
     cookies: {
       getAll() {
         return cookieStore.getAll();

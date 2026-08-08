@@ -37,6 +37,7 @@ export function AuthHydrator({
         userId: initial.userId,
         role: initial.role,
         fullName: initial.fullName,
+        email: initial.email,
       }),
     );
   });
@@ -52,6 +53,7 @@ export function AuthHydrator({
         userId: initial.userId,
         role: initial.role,
         fullName: initial.fullName,
+        email: initial.email,
       }),
     );
   }, [store, initial]);

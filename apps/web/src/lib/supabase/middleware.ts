@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
+import { AUTH_COOKIE_NAME } from "./cookie-name";
 
 /**
  * Refreshes the Supabase session on every request and writes the rotated cookies onto the
@@ -20,7 +21,9 @@ export async function updateSession(
 ): Promise<{ response: NextResponse; user: User | null }> {
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
+  const supabase = createServerClient(env.supabaseInternalUrl, env.supabaseAnonKey, {
+    // Must match the browser client exactly — see cookie-name.ts.
+    cookieOptions: { name: AUTH_COOKIE_NAME },
     cookies: {
       getAll() {
         return request.cookies.getAll();

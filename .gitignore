@@ -14,8 +14,11 @@ out/
 
 # env & secrets — NEVER commit real values
 .env
-.env.local
-.env.*.local
+# EVERY .env variant, so a backup taken while switching environments
+# (.env.cloud.bak, .env.selfhosted, .env.prod) cannot be committed by a stray `git add -A`.
+# .env.example is the one exception — it holds names and comments, never values.
+.env.*
+!.env.example
 *.pem
 service-account*.json
 gcp-*.json

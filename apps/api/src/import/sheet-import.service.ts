@@ -212,11 +212,25 @@ export class SheetImportService {
       // Blank name/department is NOT a reason to drop the ticket, but it IS something the
       // operator has to see: the row lands under a placeholder, which quietly distorts the
       // FR-18 department split until someone fills the cell in and re-imports.
-      const employeeName = orElse(row.cells[COL.employee], UNKNOWN_EMPLOYEE);
+      // A purely NUMERIC employee is a spreadsheet artefact, not a person — the same class
+      // as the numeric assignee. That cell is a formula: it has read 262, 177, 187, 86 and 96
+      // across successive exports of the SAME ticket. Treating it as a name creates a new
+      // employee called "96" on every import, each one permanent (FR-9).
+      const rawEmployee = row.cells[COL.employee]?.trim() ?? "";
+      const employeeIsArtefact = /^\d+$/.test(rawEmployee);
+      const employeeName = employeeIsArtefact
+        ? UNKNOWN_EMPLOYEE
+        : orElse(row.cells[COL.employee], UNKNOWN_EMPLOYEE);
       const departmentName = orElse(row.cells[COL.department], UNSPECIFIED_DEPARTMENT);
       const missing: string[] = [];
-      if (!row.cells[COL.employee]?.trim()) missing.push("employee");
+      if (!rawEmployee) missing.push("employee");
       if (!row.cells[COL.department]?.trim()) missing.push("department");
+      if (employeeIsArtefact) {
+        report.problems.push(
+          `row ${row.rowNum} (${no}): employee ${JSON.stringify(rawEmployee)} is a number, ` +
+            `not a name — imported as "${UNKNOWN_EMPLOYEE}"`,
+        );
+      }
       if (missing.length) {
         report.problems.push(
           `row ${row.rowNum} (${no}): blank ${missing.join(" and ")} — ` +

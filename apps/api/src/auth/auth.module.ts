@@ -6,6 +6,7 @@ import { TokenVerifier } from "./token-verifier.js";
 import { jwksProvider, tokenVerifierProvider } from "./jwks.provider.js";
 import { AuthGuard } from "./auth.guard.js";
 import { RolesGuard } from "./roles.guard.js";
+import { MasterDataModule } from "../master-data/master-data.module.js";
 
 /**
  * M1 — Auth & RBAC. Verifies Supabase session JWTs locally via jose + createRemoteJWKSet;
@@ -17,6 +18,9 @@ import { RolesGuard } from "./roles.guard.js";
  * routes opt out with `@Public()`; role-restricted routes declare `@Roles(...)`.
  */
 @Module({
+  // For `POST /me/password`. MasterDataModule takes the GoTrue client from the leaf
+  // GoTrueModule rather than from here, so these two do not import each other.
+  imports: [MasterDataModule],
   controllers: [AuthController],
   providers: [
     AuthService,

@@ -5,6 +5,7 @@ import { usersService } from "@/services/users.service";
 import { employeesService } from "@/services/employees.service";
 import { techniciansService } from "@/services/technicians.service";
 import { AppError } from "@/services/errors";
+import type { InvitedUserDto } from "@11ftc/shared";
 import type {
   CreateEmployeeDto,
   CreateTechnicianDto,
@@ -37,16 +38,36 @@ function fail(error: unknown): { ok: false; error: string; status: number } {
   return { ok: false, error: "Unexpected error", status: 0 };
 }
 
-/** Pre-authorize a Gmail on the allowlist. The account materializes on first Google login. */
+/**
+ * Create a System User: the allowlist row AND the sign-in account (ADR-0018).
+ *
+ * The response is RETURNED, not discarded. It carries the generated password exactly once —
+ * there is no SMTP on the internal network to mail it, and it cannot be read back afterwards,
+ * so dropping it here would strand the new user with an account they cannot sign in to.
+ */
 export async function inviteUserAction(input: {
   email: string;
   fullName: string;
   role: UserRole;
-}): Promise<ActionResult> {
+  password?: string;
+}): Promise<ActionResult<InvitedUserDto>> {
   try {
-    await usersService(serverApi()).invite(input);
+    const user = await usersService(serverApi()).invite(input);
     revalidatePath("/employees");
-    return { ok: true, data: undefined };
+    return { ok: true, data: user };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/** Admin reset — the stand-in for "forgot password?" on a network with no mail server. */
+export async function resetUserPasswordAction(
+  userId: string,
+): Promise<ActionResult<InvitedUserDto>> {
+  try {
+    const user = await usersService(serverApi()).resetPassword(userId);
+    revalidatePath("/employees");
+    return { ok: true, data: user };
   } catch (error) {
     return fail(error);
   }

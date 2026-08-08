@@ -39,6 +39,22 @@ x-node-base: &node-base
     CHOKIDAR_USEPOLLING: "true" # tsc/nest watch
     CHOKIDAR_INTERVAL: "500"
     WATCHPACK_POLLING: "true" # Next.js (webpack/turbopack)
+    # ── Reaching Supabase, which runs in its OWN compose project ──────────────────────
+    # It is not on this network, so `kong`/`db` do not resolve; and `localhost` inside a
+    # container is THAT CONTAINER, so the host's published ports are invisible too. Both
+    # failures look like the service is down. `host.docker.internal` is the host.
+    #
+    # SUPABASE_URL is deliberately NOT overridden: it defines the expected token ISSUER and
+    # must keep matching what GoTrue stamps in. Only the addresses actually dialled change.
+    #
+    # The repo-root .env keeps `localhost` because the host-side tooling (db:migrate,
+    # seed-admin, import:sheet) runs outside Docker and needs it.
+    #
+    # In deployment all of this collapses to one LAN hostname that resolves everywhere, and
+    # these three lines can be deleted.
+    DATABASE_URL: ${DATABASE_URL_INTERNAL}
+    SUPABASE_INTERNAL_URL: http://host.docker.internal:8000
+    SUPABASE_JWKS_URL: http://host.docker.internal:8000/auth/v1/.well-known/jwks.json
   volumes:
     - .:/app
     - pnpm_store:/pnpm-store
@@ -68,6 +84,10 @@ services:
   api:
     <<: *node-base
     command: sh -c "corepack enable && pnpm --filter @11ftc/api dev"
+    # host.docker.internal is native on Docker Desktop; this keeps it working on a Linux
+    # engine too, which the deployment server will be.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3001:3001"
     depends_on:
@@ -99,6 +119,13 @@ services:
       # container `localhost:3001` is the web app itself, not the api. The browser keeps using
       # NEXT_PUBLIC_API_URL (the published port). See apps/web/src/services/server.ts.
       API_INTERNAL_URL: http://api:3001/api/v1
+      # Same trap, one layer down: the middleware and Server Components validate the session
+      # against Supabase, and `localhost:8000` is this container. Without this the browser
+      # signs in successfully and every request still bounces to /sign-in, because the SERVER
+      # sees no session. The browser keeps using NEXT_PUBLIC_SUPABASE_URL.
+      SUPABASE_INTERNAL_URL: http://host.docker.internal:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Full list, because a `volumes:` key REPLACES the anchor's list (YAML does not merge
     # sequences). The addition that matters is `web_next`: without it, `.next` comes from the
     # bind mount, and Turbopack reads a host-built (Windows) .next and panics with
