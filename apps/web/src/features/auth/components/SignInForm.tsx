@@ -32,10 +32,33 @@ export function SignInForm({ next = "/dashboard" }: { next?: string }) {
     setError(null);
     setSubmitting(true);
 
-    const { error: signInError } = await getBrowserSupabase().auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
-    });
+    /**
+     * Raced against a timeout, because this call CAN hang indefinitely.
+     *
+     * supabase-js serialises auth work behind a Web Lock. If an earlier token refresh died
+     * holding that lock — which is what happens when the auth server becomes unreachable
+     * mid-session — every later sign-in waits on it forever, with no error and no rejection.
+     * Without this the button just sits on "Signing in…" and the user has nothing to act on.
+     */
+    const TIMEOUT_MS = 15_000;
+    const result = await Promise.race([
+      getBrowserSupabase().auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      }),
+      new Promise<"timeout">((r) => setTimeout(() => r("timeout"), TIMEOUT_MS)),
+    ]);
+
+    if (result === "timeout") {
+      setSubmitting(false);
+      setError(
+        "Sign-in timed out. This usually means stale sign-in data in this browser — " +
+          "clear cookies and site data for this site, or try a private window, then retry.",
+      );
+      return;
+    }
+
+    const { error: signInError } = result;
 
     if (signInError) {
       setSubmitting(false);
