@@ -30,6 +30,17 @@ export const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_JWKS_URL: z.string().url(),
 
+  /**
+   * Service-role key — required, because account provisioning (ADR-0018) calls GoTrue's admin
+   * API with it. Validated here so a missing key fails at BOOT with a named variable, rather
+   * than at 2pm when an administrator tries to invite someone and gets a 401 from a service
+   * they did not know was involved.
+   *
+   * It bypasses RLS and every policy. Server-side only — it must never reach the browser, so
+   * it is deliberately NOT prefixed `NEXT_PUBLIC_`.
+   */
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+
   // Ticket-number scope (M3 / OPEN-1). 'year' → IT-2026-0174; 'date' → IT-2026-0715-001.
   TICKET_NUMBER_SCOPE: z.enum(["date", "year"]).default("year"),
 
