@@ -1,6 +1,7 @@
 "use client";
 import { createBrowserClient } from "@supabase/ssr";
 import { env } from "@/lib/env";
+import { AUTH_COOKIE_NAME } from "./cookie-name";
 
 /**
  * Browser Supabase client — AUTH ONLY (Google OAuth sign-in + reading the session). The
@@ -12,7 +13,10 @@ import { env } from "@/lib/env";
 let client: ReturnType<typeof createBrowserClient> | undefined;
 
 export function getBrowserSupabase() {
-  client ??= createBrowserClient(env.supabaseUrl, env.supabaseAnonKey);
+  client ??= createBrowserClient(env.supabaseUrl, env.supabaseAnonKey, {
+    // Pinned so it matches the SERVER client, which dials a different host in Docker.
+    cookieOptions: { name: AUTH_COOKIE_NAME },
+  });
   return client;
 }
 
