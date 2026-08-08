@@ -27,9 +27,13 @@ export class GoTrueAdminService {
   private readonly serviceRoleKey: string;
 
   constructor(config: ConfigService<Env, true>) {
-    this.baseUrl = config
-      .get("SUPABASE_URL", { infer: true })
-      .replace(/\/$/, "");
+    // The address to CONNECT to, which is not always the canonical one: inside a container
+    // `localhost` is the container itself. Falls back to SUPABASE_URL when unset.
+    // `String(...)` rather than a cast: making SUPABASE_INTERNAL_URL optional widens what
+    // ConfigService.get returns for BOTH keys, and a cast would just hide that.
+    const internal = config.get("SUPABASE_INTERNAL_URL", { infer: true });
+    const canonical = config.get("SUPABASE_URL", { infer: true });
+    this.baseUrl = String(internal ?? canonical).replace(/\/$/, "");
     this.serviceRoleKey = config.get("SUPABASE_SERVICE_ROLE_KEY", { infer: true });
   }
 

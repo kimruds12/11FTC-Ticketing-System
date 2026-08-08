@@ -39,13 +39,21 @@ export function SignInForm({ next = "/dashboard" }: { next?: string }) {
 
     if (signInError) {
       setSubmitting(false);
-      // Deliberately does not distinguish "no such account" from "wrong password" — that
-      // difference tells an outsider which addresses are real. GoTrue's own wording leaks it,
-      // so it is replaced rather than surfaced.
+      // Credential failures are deliberately vague: distinguishing "no such account" from
+      // "wrong password" tells an outsider which addresses are real, and GoTrue's own wording
+      // leaks it.
+      //
+      // ANY OTHER answered request shows the server's message. Collapsing those into "could
+      // not reach the sign-in service" is what hid `422 email_provider_disabled` behind a
+      // network story and sent debugging in the wrong direction for an hour. Only a request
+      // that never got a response — no status at all — is a connectivity problem.
+      const status = signInError.status;
       setError(
-        signInError.status === 400 || signInError.status === 401
+        status === 400 || status === 401
           ? "Incorrect email or password."
-          : "Could not reach the sign-in service. Check your connection and try again.",
+          : status
+            ? `Sign-in failed: ${signInError.message}`
+            : "Could not reach the sign-in service. Check your connection and try again.",
       );
       return;
     }

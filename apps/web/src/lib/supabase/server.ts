@@ -13,7 +13,7 @@ import { env } from "@/lib/env";
  */
 export async function getServerSupabase() {
   const cookieStore = await cookies();
-  return createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
+  return createServerClient(env.supabaseInternalUrl, env.supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

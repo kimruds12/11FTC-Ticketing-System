@@ -27,8 +27,24 @@ export const envSchema = z.object({
   // Supabase Auth (M1). JWTs are verified locally against the JWKS — no per-request round
   // trip. Assumes asymmetric signing (ES256); if the project uses legacy HS256, swap the
   // JWKS URL for a shared-secret var here and in the verifier (ADR-0013 watch-out).
+  /**
+   * The CANONICAL Supabase URL — it defines the expected token ISSUER
+   * (`<SUPABASE_URL>/auth/v1`), so it must match what GoTrue stamps into tokens
+   * (`API_EXTERNAL_URL` on the Supabase side). Never set this to a container-internal
+   * address: the issuer would stop matching and every token would be rejected.
+   */
   SUPABASE_URL: z.string().url(),
   SUPABASE_JWKS_URL: z.string().url(),
+
+  /**
+   * Where this process actually CONNECTS to Supabase, when that differs from the canonical
+   * URL. Inside a container `localhost:8000` is the container itself, so a stack running
+   * alongside Supabase's own compose project cannot reach it that way.
+   *
+   * Only the transport changes — the issuer above is unaffected. Unset in a normal
+   * deployment, where one hostname resolves from everywhere.
+   */
+  SUPABASE_INTERNAL_URL: z.string().url().optional(),
 
   /**
    * Service-role key — required, because account provisioning (ADR-0018) calls GoTrue's admin
