@@ -9,8 +9,14 @@ import { SheetsClient } from "./sheets.client.js";
 import { SyncService } from "./sync.service.js";
 import { SyncProcessor, SYNC_QUEUE } from "./sync.processor.js";
 
-// Load the repo-root .env (worker cwd is apps/api; at runtime this file is dist/sync/*).
-const rootEnv = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..", ".env");
+// Load the repo-root .env in non-production only. Cloud deployments (Railway) inject
+// env vars directly into process.env; the file does not exist and the path resolution
+// would throw. In local dev, the file must be loaded because the worker runs in a
+// sub-process (cwd: apps/api) that does not inherit Next.js's env loading.
+const rootEnv =
+  process.env["NODE_ENV"] !== "production"
+    ? resolve(dirname(fileURLToPath(import.meta.url)), "../../../..", ".env")
+    : undefined;
 
 /**
  * M8 — the SEPARATE worker process (booted by main.worker.ts, NOT imported by AppModule).
@@ -20,14 +26,30 @@ const rootEnv = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..", 
  */
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: [rootEnv] }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      ...(rootEnv ? { envFilePath: [rootEnv] } : {}),
+    }),
     DatabaseModule,
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const url = new URL(config.get<string>("REDIS_URL") ?? "redis://localhost:6379");
+        const rawUrl = config.get<string>("REDIS_URL") ?? "redis://localhost:6379";
+        const url = new URL(rawUrl);
+        const isTls = url.protocol === "rediss:"; // Upstash uses rediss:// (double-s)
         return {
-          connection: { host: url.hostname, port: Number(url.port) || 6379 },
+          connection: {
+            host: url.hostname,
+            port: Number(url.port) || (isTls ? 6380 : 6379),
+            // Only include username/password when the URL actually contains them.
+            // Spreading undefined properties would cause ioredis to attempt auth with
+            // empty strings, which most Redis servers reject.
+            ...(url.username ? { username: url.username } : {}),
+            ...(url.password ? { password: url.password } : {}),
+            // Use conditional spread so `tls` is absent (not undefined) when not needed.
+            // ioredis treats an absent key and an explicit undefined differently.
+            ...(isTls ? { tls: {} } : {}),
+          },
         };
       },
     }),

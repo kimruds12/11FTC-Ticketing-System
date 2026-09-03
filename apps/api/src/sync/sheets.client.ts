@@ -3,6 +3,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { google, type sheets_v4 } from "googleapis";
+import type { JWTInput } from "google-auth-library";
 import type { SheetRowPayload } from "../outbox/outbox.service.js";
 
 /**
@@ -76,6 +77,33 @@ function resolveKeyFile(configured: string | undefined): string | undefined {
 }
 
 /**
+ * Resolve Google credentials for either environment:
+ *   - Cloud (Railway): GOOGLE_SERVICE_ACCOUNT_JSON holds the full JSON key as a string.
+ *   - Local dev: GOOGLE_APPLICATION_CREDENTIALS holds a file path (resolved above).
+ *
+ * Returns an auth config object for google.auth.GoogleAuth. Only one of `credentials`
+ * or `keyFile` will be present — googleapis uses whichever it finds first.
+ */
+function resolveGoogleAuthConfig(keyFile: string | undefined): {
+  credentials?: JWTInput;
+  keyFile?: string;
+} {
+  const jsonStr = process.env["GOOGLE_SERVICE_ACCOUNT_JSON"];
+  if (jsonStr) {
+    try {
+      return { credentials: JSON.parse(jsonStr) as JWTInput };
+    } catch {
+      throw new Error(
+        "GOOGLE_SERVICE_ACCOUNT_JSON is set but is not valid JSON. " +
+          "Paste the full service-account key file contents as a single-line string.",
+      );
+    }
+  }
+  // Local dev: fall back to the resolved file path (or undefined → ADC)
+  return keyFile ? { keyFile } : {};
+}
+
+/**
  * M8 — googleapis wrapper writing DIRECTLY into the team's visible `Tickets` tab, newest at
  * the top (ADR-0016, superseding the `_raw` design in ADR-0003).
  *
@@ -111,12 +139,11 @@ export class SheetsClient {
 
   private sheets(): sheets_v4.Sheets {
     if (!this.api) {
-      // googleapis' own GoogleAuth — its types line up with google.sheets() (avoids the
-      // google-auth-library version skew). `keyFile` is passed explicitly rather than left to
-      // ADC, because ADC resolves a relative GOOGLE_APPLICATION_CREDENTIALS against the
-      // process cwd — which is apps/api, not the repo root where the key actually lives.
+      // resolveGoogleAuthConfig picks GOOGLE_SERVICE_ACCOUNT_JSON (cloud/Railway) first,
+      // then falls back to the resolved keyFile path (local dev / ADC). This means the same
+      // SheetsClient code works in both environments with no branching at call sites.
       const auth = new google.auth.GoogleAuth({
-        ...(this.keyFile ? { keyFile: this.keyFile } : {}),
+        ...resolveGoogleAuthConfig(this.keyFile),
         scopes: ["https://www.googleapis.com/auth/spreadsheets"],
       });
       this.api = google.sheets({ version: "v4", auth });

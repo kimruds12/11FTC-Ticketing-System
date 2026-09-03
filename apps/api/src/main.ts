@@ -42,7 +42,9 @@ async function bootstrap() {
     defaultVersion: DEFAULT_API_VERSION,
   });
 
-  const port = Number(process.env.API_PORT ?? 3001);
+  // Railway assigns the listening port via PORT. API_PORT is the local override.
+  // 3001 is the fallback for local development without a .env.
+  const port = Number(process.env["PORT"] ?? process.env["API_PORT"] ?? 3001);
   await app.listen(port);
   console.log(`[api] listening on :${port} (prefix /${API_PREFIX}, default v${DEFAULT_API_VERSION})`);
   console.log(`[api] CORS origins: ${origins.join(", ")}`);

@@ -1,0 +1,8 @@
+﻿[build]
+builder = "nixpacks"
+buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@11ftc/api"
+
+[deploy]
+startCommand = "node apps/api/dist/main.worker.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

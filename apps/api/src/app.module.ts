@@ -25,9 +25,13 @@ import { AnalyticsModule } from "./analytics/analytics.module.js";
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      // Load the repo-root .env: the process cwd is apps/api (pnpm --filter), and at
-      // runtime this file is apps/api/dist/app.module.js, so the root is three up.
-      envFilePath: [resolve(dirname(fileURLToPath(import.meta.url)), "../../..", ".env")],
+      // Cloud deployments (Railway) inject env vars directly into process.env — no .env
+      // file exists at runtime. Only load the file in local / non-production mode where
+      // the repo-root .env is the source of truth. The root is three dirs up from the
+      // compiled dist/app.module.js: apps/api/dist → apps/api → apps → (root).
+      ...(process.env["NODE_ENV"] !== "production" && {
+        envFilePath: [resolve(dirname(fileURLToPath(import.meta.url)), "../../..", ".env")],
+      }),
     }),
     DatabaseModule,
     AuthModule, // M1

@@ -57,6 +57,16 @@ export const envSchema = z.object({
    */
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 
+  // Redis — BullMQ trigger bus only (System Design §4 — no response caching yet).
+  // Locally: redis://localhost:6379 (or via docker compose)
+  // Production (Upstash): rediss://default:TOKEN@HOST:PORT  (TLS, note the double-s)
+  REDIS_URL: z.string().min(1, "REDIS_URL is required"),
+
+  // Google Sheets sync — service-account credentials.
+  // Local dev: GOOGLE_APPLICATION_CREDENTIALS (file path, handled by sheets.client.ts)
+  // Cloud (Railway): provide the full service-account JSON as a string in this var.
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+
   // Ticket-number scope (M3 / OPEN-1). 'year' → IT-2026-0174; 'date' → IT-2026-0715-001.
   TICKET_NUMBER_SCOPE: z.enum(["date", "year"]).default("year"),
 
