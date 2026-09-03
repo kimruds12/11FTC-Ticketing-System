@@ -27,8 +27,23 @@ export default async function AppRouteLayout({
   try {
     me = await authService(serverApi()).me();
   } catch {
-    // 403 (no-user-row / inactive) or any failure resolving the AuthContext.
-    redirect("/sign-in?error=not-authorized");
+    // If the API server is offline or unreachable from SSR, fallback to checking public.users directly via Supabase client.
+    const { data: dbUser } = await supabase
+      .from("users")
+      .select("user_id, role, full_name, email, is_active")
+      .eq("auth_uid", user.id)
+      .maybeSingle();
+
+    if (dbUser && dbUser.is_active) {
+      me = {
+        userId: dbUser.user_id as string,
+        role: dbUser.role,
+        fullName: dbUser.full_name as string,
+        email: dbUser.email as string,
+      };
+    } else {
+      redirect("/sign-in?error=not-authorized");
+    }
   }
 
   return (
