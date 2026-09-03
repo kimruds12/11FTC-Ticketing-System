@@ -23,27 +23,33 @@ export default async function AppRouteLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-in");
 
-  let me;
+  let me: { userId: string; role: any; fullName: string; email: string } | null = null;
   try {
     me = await authService(serverApi()).me();
   } catch {
     // If the API server is offline or unreachable from SSR, fallback to checking public.users directly via Supabase client.
-    const { data: dbUser } = await supabase
-      .from("users")
-      .select("user_id, role, full_name, email, is_active")
-      .eq("auth_uid", user.id)
-      .maybeSingle();
+    try {
+      const { data: dbUser } = await supabase
+        .from("users")
+        .select("user_id, role, full_name, email, is_active")
+        .eq("auth_uid", user.id)
+        .maybeSingle();
 
-    if (dbUser && dbUser.is_active) {
-      me = {
-        userId: dbUser.user_id as string,
-        role: dbUser.role,
-        fullName: dbUser.full_name as string,
-        email: dbUser.email as string,
-      };
-    } else {
-      redirect("/sign-in?error=not-authorized");
+      if (dbUser && dbUser.is_active) {
+        me = {
+          userId: dbUser.user_id as string,
+          role: dbUser.role,
+          fullName: dbUser.full_name as string,
+          email: dbUser.email as string,
+        };
+      }
+    } catch {
+      // Ignore database fallback error and handle redirect below
     }
+  }
+
+  if (!me) {
+    redirect("/sign-in?error=not-authorized");
   }
 
   return (
