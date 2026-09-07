@@ -25,6 +25,20 @@ export async function updateSession(
     return { response, user: null };
   }
 
+  // Fast check: Skip remote Supabase fetch if there are no auth cookies in the request.
+  const allCookies = request.cookies.getAll();
+  const hasAuthCookie = allCookies.some(
+    (c) =>
+      c.name === AUTH_COOKIE_NAME ||
+      c.name.includes("sb-") ||
+      c.name.includes("auth-token") ||
+      c.name.includes("access-token"),
+  );
+
+  if (!hasAuthCookie) {
+    return { response, user: null };
+  }
+
   try {
     const supabase = createServerClient(env.supabaseInternalUrl, env.supabaseAnonKey, {
       // Must match the browser client exactly — see cookie-name.ts.
@@ -47,8 +61,7 @@ export async function updateSession(
       data: { user },
     } = await supabase.auth.getUser();
     return { response, user };
-  } catch (error) {
-    console.error("Middleware updateSession error:", error);
+  } catch {
     return { response, user: null };
   }
 }
