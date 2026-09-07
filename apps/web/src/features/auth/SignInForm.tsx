@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAppDispatch } from "@/store/hooks";
 import { UserRole } from "@11ftc/shared";
 import { setSession } from "@/store/slices/authSlice";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SignInForm() {
   const router = useRouter();
@@ -22,29 +23,65 @@ export default function SignInForm() {
     setLoading(true);
 
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      
-      const cleanEmail = email.trim().toLowerCase();
-      const isCorrectAdmin = cleanEmail === "admin@gmail.com" && password === "admin123";
-      const isCorrectStaff = cleanEmail === "staff@gmail.com" && password === "staff123";
+      const supabase = createSupabaseBrowserClient();
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      if (isCorrectAdmin) {
-        const role = UserRole.IT_ADMINISTRATOR;
-        const fullName = "Admin User";
-        const userId = "usr-admin";
-        dispatch(setSession({ userId, role, fullName }));
-        router.push("/dashboard");
-      } else if (isCorrectStaff) {
-        const role = UserRole.IT_STAFF;
-        const fullName = "IT Staff";
-        const userId = "usr-staff";
-        dispatch(setSession({ userId, role, fullName }));
-        router.push("/dashboard");
-      } else {
-        setError("Invalid email or password. Authorized access only.");
+      if (authError) {
+        // Map Supabase error messages to user-friendly text
+        const msg = authError.message.toLowerCase();
+        if (authError.message === "Invalid login credentials") {
+          setError("Incorrect email or password.");
+        } else if (authError.message === "Email not confirmed") {
+          setError("Your email has not been confirmed. Please check your inbox.");
+        } else if (msg.includes("fetch") || msg.includes("network") || msg.includes("connection")) {
+          setError("Could not reach the sign-in service. Check your connection and try again.");
+        } else {
+          setError(authError.message);
+        }
+        return;
       }
-    } catch {
-      setError("Invalid credentials. Please try again.");
+
+      if (!data.user || !data.session) {
+        setError("Authentication failed. Please try again.");
+        return;
+      }
+
+      // Read role from user_metadata or app_metadata. The backend sets this when
+      // creating the user. Default to IT_STAFF if not set.
+      const metadata = data.user.user_metadata ?? {};
+      const appMetadata = data.user.app_metadata ?? {};
+      const role: UserRole =
+        metadata.role ??
+        appMetadata.role ??
+        UserRole.IT_STAFF;
+
+      // Build the display name from metadata or fall back to email
+      const fullName: string =
+        metadata.full_name ??
+        metadata.fullName ??
+        metadata.name ??
+        data.user.email ??
+        "User";
+
+      dispatch(
+        setSession({
+          userId: data.user.id,
+          role,
+          fullName,
+        }),
+      );
+
+      router.push("/dashboard");
+    } catch (err: any) {
+      const errStr = String(err?.message || err).toLowerCase();
+      if (errStr.includes("fetch") || errStr.includes("network") || err?.name === "TypeError") {
+        setError("Could not reach the sign-in service. Check your connection and try again.");
+      } else {
+        setError("An unexpected error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -61,7 +98,7 @@ export default function SignInForm() {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="admin@gmail.com"
+          placeholder="you@11ftc.com"
           className="input"
           autoComplete="email"
           required

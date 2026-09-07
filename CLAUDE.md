@@ -74,6 +74,18 @@ multi-statement transactions, which breaks FR-31.
 - Build order: M1 → M2 → M3 → … → M9 (see `docs/14-module-specifications.md`).
 - **Stop and ask** if a requested change conflicts with these invariants or the docs.
 
+## Developer commands
+
+- `pnpm install` — install all dependencies.
+- `pnpm dev` — start api (:3001) and web (:3000) in watch mode.
+- `pnpm test` — run all unit tests.
+- `pnpm test:concurrency` — run the concurrency spec (currently intentionally red until M3).
+- `pnpm lint` / `pnpm typecheck` — lint and typecheck across the monorepo.
+- `pnpm check:no-delete` — verify no DELETE against tickets/audit_log.
+- `pnpm check:agents` — ensure AGENTS.md and copilot-instructions.md are in sync.
+- `pnpm sync:agents` — regenerate agent instruction files from CLAUDE.md.
+- `pnpm docker:dev` — start Redis + Postgres via Docker Compose (see docs/deployment.md).
+
 ## Agent skills & engineering standards
 
 This repo vendors a library of engineering skills, configured for **five agents** (Claude

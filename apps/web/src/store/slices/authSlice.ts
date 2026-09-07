@@ -26,10 +26,10 @@ const getInitialState = (): AuthState => {
     }
   }
   return {
-    userId: "usr-admin",
-    role: UserRole.IT_ADMINISTRATOR,
-    fullName: "Admin User",
-    status: "authenticated",
+    userId: null,
+    role: null,
+    fullName: null,
+    status: "unauthenticated",
   };
 };
 
