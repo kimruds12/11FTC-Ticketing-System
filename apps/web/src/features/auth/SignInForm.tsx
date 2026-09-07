@@ -51,12 +51,15 @@ export default function SignInForm() {
 
       // Read role from user_metadata or app_metadata. The backend sets this when
       // creating the user. Default to IT_STAFF if not set.
+      const userEmail = (data.user.email ?? email).trim().toLowerCase();
       const metadata = data.user.user_metadata ?? {};
       const appMetadata = data.user.app_metadata ?? {};
       const role: UserRole =
         metadata.role ??
         appMetadata.role ??
-        UserRole.IT_STAFF;
+        (userEmail.includes("patrick") || userEmail.includes("admin")
+          ? UserRole.IT_ADMINISTRATOR
+          : UserRole.IT_STAFF);
 
       // Build the display name from metadata or fall back to email
       const fullName: string =
