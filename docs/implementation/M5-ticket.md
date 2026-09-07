@@ -90,7 +90,7 @@ path only — no tx needed. Back with the indexes already in the schema.
 |---|---|---|
 | `POST /tickets` | Encode (any status; defaults Closed) | 400 invalid body |
 | `PATCH /tickets/:id` | Update fields | 409 illegal transition |
-| `POST /tickets/:id/assign` | Set `assigned_to` | 404 |
+| `POST /tickets/:id/assign` | Replace the technician list (names; ADR-0017) | 404 |
 | `POST /tickets/:id/ongoing` | → Ongoing (sets `ongoing_at`) | 409 |
 | `POST /tickets/:id/close` | → Closed (sets `closed_at`) | 409 |
 | `GET /tickets` | List + filter (FR-3) | — |

@@ -1,4 +1,4 @@
-name: CI
+name: CI / Deploy
 
 on:
   push:
@@ -83,3 +83,60 @@ jobs:
 #       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ticketing_test
 #       REDIS_URL: redis://localhost:6379
 # ─────────────────────────────────────────────────────────────────────────────────────
+
+  # ── Deploy web to Vercel (main branch only) ──────────────────────────────────
+  # Requires three GitHub repository secrets:
+  #   VERCEL_TOKEN      — Vercel account token (Vercel dashboard → Account → Tokens)
+  #   VERCEL_ORG_ID     — from `vercel whoami` or vercel.json after first link
+  #   VERCEL_PROJECT_ID — Vercel project → Settings → General
+  deploy-web:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy to Vercel (production)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: apps/web
+          vercel-args: "--prod"
+
+  # ── Run DB migrations on every main-branch deploy ────────────────────────────
+  # Railway auto-deploys the API + worker via its GitHub integration. This job
+  # handles migrations before the new API version goes live.
+  # Requires one GitHub repository secret:
+  #   DATABASE_URL — Supabase session-pooler URL (postgres://postgres.<tenant>:pwd@host:5432/postgres)
+  deploy-migrations:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm db:migrate
+

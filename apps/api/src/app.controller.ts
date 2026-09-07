@@ -1,11 +1,14 @@
 import { Controller, Get, VERSION_NEUTRAL } from "@nestjs/common";
 import { CURRENT_API_VERSION, MODULE_VERSIONS } from "./common/versioning/index.js";
+import { Public } from "./auth/public.decorator.js";
 
 /**
  * Version-neutral operational endpoints. `VERSION_NEUTRAL` means these respond WITHOUT a
  * version segment (so `/api/health`, not `/api/v1/health`) — health checks and version
- * discovery must not move when the API version does.
+ * discovery must not move when the API version does. `@Public()` opts them out of the global
+ * AuthGuard — ops probes must not require a session.
  */
+@Public()
 @Controller({ version: VERSION_NEUTRAL })
 export class AppController {
   /** Liveness probe. Cheap, dependency-free — for load balancers and uptime checks. */

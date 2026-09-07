@@ -40,7 +40,7 @@ sync/
   source of truth, not the queue.
 - **Claim:** `WHERE status='PENDING' ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED`
   — lets multiple workers/ticks coexist without double-processing.
-- **Project (FR-27):** `employee_id`→name, `assigned_to`→name, `main_issue_id`→label. (In
+- **Project (FR-27):** `employee_id`→name, assignees→`formatAssignees` ("Kim/Paul"), `main_issue_id`→label. (In
   practice the payload M7 stored is already projected; re-project only if you kept IDs.)
 - **Write:**
   - new row → `values.append` to `_raw`; capture the returned row index into

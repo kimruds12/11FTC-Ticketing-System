@@ -9,12 +9,17 @@ import { UserRole } from "@11ftc/shared";
 interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  /**
+   * Fired when a destination is chosen. On desktop the sidebar is permanent and this is a
+   * no-op; on a phone it is what dismisses the drawer, which otherwise stays open on top of
+   * the page it just navigated to.
+   */
+  onNavigate?: () => void;
 }
 
-export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ isCollapsed, onToggleCollapse, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const role = useAppSelector((state) => state.auth.role);
-  const fullName = useAppSelector((state) => state.auth.fullName);
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -48,7 +53,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
       visible: true,
     },
     {
-      label: "Employee Management",
+      label: "Directory",
       href: "/employees",
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,7 +83,10 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         </svg>
       ),
-      visible: true,
+      // Admin only, confirmed with the department: monitoring who changed what is an
+      // oversight function, not part of encoding. Cosmetic only — the API's RolesGuard on
+      // /audit-logs is the boundary (ADR-0011).
+      visible: role === UserRole.IT_ADMINISTRATOR,
     },
   ];
 
@@ -136,7 +144,8 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
               <div key={item.href} className="group relative">
                 <Link
                   href={item.href}
-                  className={`flex items-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-200 ${
+                  onClick={onNavigate}
+                  className={`nav-touch flex items-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-200 ${
                     isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
                   } ${
                     active
@@ -164,21 +173,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
           })}
       </nav>
 
-      {/* ── User Profile at Bottom (Role info & Logout removed per instruction) ── */}
-      <div className="border-t border-gray-100 p-3">
-        <div className={`flex items-center rounded-lg p-2 ${isCollapsed ? "justify-center" : "gap-3 bg-gray-50"}`}>
-          <div className="w-8 h-8 rounded-full bg-primary-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2 ring-primary-100">
-            {fullName ? fullName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "IT"}
-          </div>
-          {!isCollapsed && (
-            <div className="overflow-hidden">
-              <div className="text-sm font-semibold text-gray-900 truncate leading-tight">
-                {fullName || (role === UserRole.IT_ADMINISTRATOR ? "Admin User" : "IT Staff")}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+
     </aside>
   );
 }

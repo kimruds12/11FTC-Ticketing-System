@@ -13,6 +13,11 @@
 # REV 4: status ENUM rebuilt to the department's real process - Open, Ongoing,
 #        Closed only. Voided dropped. resolved_at/assigned_at replaced by
 #        ongoing_at/closed_at.
+#
+# REV 5 (ADR-0017): tickets.assigned_to + assigned_label REPLACED by the
+#        Technician directory + TicketAssignee join table. Assignment is no
+#        longer an account FK - most real handlers have no login, and 21% of
+#        tickets are two-technician work. Also adds tickets.source (ADR-0015).
 
 direction: right
 
@@ -67,14 +72,34 @@ tickets: Ticket {
   employee_id: uuid {constraint: foreign_key}
   main_issue_id: uuid {constraint: foreign_key}
   concern: text
-  assigned_to: uuid {constraint: foreign_key}
   created_by: uuid {constraint: foreign_key}
   status: enum "Open | Ongoing | Closed"
   remarks: text
+  source: enum "APP | IMPORT"
   ongoing_at: timestamptz NULL
   closed_at: timestamptz NULL
   created_at: timestamptz
   updated_at: timestamptz
+}
+
+# Who HANDLED the ticket. A directory entry, never an account (ADR-0017): most real
+# handlers have no login, and two-technician work is ~21% of the history.
+technicians: Technician {
+  shape: sql_table
+  technician_id: uuid {constraint: primary_key}
+  name: varchar
+  name_normalized: varchar UNIQUE
+  user_id: uuid NULL {constraint: foreign_key}
+  is_active: boolean
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+ticket_assignees: TicketAssignee {
+  shape: sql_table
+  ticket_id: uuid {constraint: primary_key}
+  technician_id: uuid {constraint: primary_key}
+  position: int
 }
 
 sequences: TicketSequence {
@@ -115,7 +140,9 @@ outbox: SyncOutbox {
 employees.department_id -> departments.department_id: belongs to
 tickets.employee_id -> employees.employee_id: reported by
 tickets.main_issue_id -> main_issues.main_issue_id: classified as
-tickets.assigned_to -> users.user_id: assigned to
+ticket_assignees.ticket_id -> tickets.ticket_id: handled work on
+ticket_assignees.technician_id -> technicians.technician_id: performed by
+technicians.user_id -> users.user_id: optionally an account
 tickets.created_by -> users.user_id: encoded by
 tickets.sequence_scope -> sequences.scope_key: numbered from
 audit.ticket_id -> tickets.ticket_id: tracks
@@ -133,7 +160,13 @@ notes: |md
   - `ticket_no` is a persisted, generated value — never recomputed on read,
     so backdated rows keep their original number.
   - `name_normalized` (lower + trim + collapse whitespace) blocks duplicate
-    employees created inline from the ticket form.
+    employees — and duplicate **technicians** — created inline from the ticket
+    form. One shared `normalizeName`, two tables, same guarantee.
+  - **TicketAssignee is many-to-many on purpose** (ADR-0017). Two-technician
+    work is ~21% of the real history, so a single `assigned_to` FK could not
+    express it, and the free-text fallback it needed left FR-19 blind to 74%
+    of tickets. `position` is the typed order and becomes the sheet's column G
+    (`"Kim/Paul"`), so reordering rewrites the cell.
   - `closed_at` is separate from `updated_at` so the dashboard can count
     problems solved per period accurately. `ongoing_at` is set on first entry
     to Ongoing; a Closed ticket with `ongoing_at IS NULL` was fixed on the
@@ -141,10 +174,11 @@ notes: |md
     column.
   - `row_key` = the ticket_no. It locates the ticket's row in the sheet
     **without depending on row position**, which the sheet's newest-first
-    ordering makes unreliable. `raw_row_number` is a cache of the row index
-    in the append-only `_raw` tab, where rows never shift.
-  - Index: `tickets (date)`, `tickets (status)`, `tickets (assigned_to, status)`,
-    `tickets (closed_at)`, `outbox (status, created_at)`.
+    ordering makes unreliable. Since ADR-0016 the worker writes into the
+    visible `Tickets` tab and rows DO shift, so `raw_row_number` is a
+    diagnostic breadcrumb that is written but never read back.
+  - Index: `tickets (date)`, `tickets (status)`, `tickets (closed_at)`,
+    `ticket_assignees (technician_id)`, `outbox (status, created_at)`.
   - **There is no Voided status and no delete path.** Encoding errors are
     corrected by editing; the audit log preserves the change. Deleting would
     gap the number sequence and orphan the row already sent to the sheet.

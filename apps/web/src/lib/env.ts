@@ -18,4 +18,18 @@ export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   /** Supabase anon (publishable) key. Anon key ONLY in the browser. */
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+  /**
+   * Where the SERVER reaches Supabase — middleware, Server Components, Server Actions.
+   *
+   * Not the same address as the browser's when the app runs in Docker while Supabase runs
+   * in its own compose project: `localhost:8000` is the WEB CONTAINER from inside the
+   * container, so `getUser()` gets connection-refused, the server sees no session, and every
+   * request bounces back to /sign-in — while the browser's own sign-in succeeded. Exactly
+   * the trap `API_INTERNAL_URL` already exists for.
+   *
+   * Unset in a normal deployment, where one hostname resolves from everywhere; it then
+   * falls back to the public URL and nothing changes.
+   */
+  supabaseInternalUrl:
+    process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "",
 } as const;

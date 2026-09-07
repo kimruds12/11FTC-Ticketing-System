@@ -153,10 +153,31 @@ EmployeeResolver: {
   "+search(q: String)": "List<Employee>"
 }
 
+# Who HANDLED the ticket. A directory entry, NOT an account (ADR-0017): most real
+# handlers have never signed in, and two-technician work is ~21% of the history.
+Technician: {
+  shape: class
+  "-technicianId": UUID
+  "-name": String
+  "-nameNormalized": String
+  "-userId": "UUID?"
+  "-isActive": Boolean
+}
+
+TechnicianService: {
+  shape: class
+  "«service»": ""
+  "+resolveOrCreateMany(names, tx)": "List<TicketAssignee>"
+  "+setAssignees(ticketId, names, tx)": "List<TicketAssignee>"
+  "+search(q: String)": "List<Technician>"
+}
+
 # ---- associations ----
 Ticket -> Employee: "reported by\n1..1" {source-arrowhead.shape: diamond}
 Ticket -> MainIssueCategory: "classified as\n1..1"
-Ticket -> User: "assigned_to 0..1\ncreated_by 1..1"
+Ticket -> User: "created_by 1..1"
+Ticket -> Technician: "handled by\n0..* (ordered)" {source-arrowhead.shape: diamond}
+Technician -> User: "optional account\n0..1" {style.stroke-dash: 3}
 Ticket -> TicketStatus: "«uses»" {style.stroke-dash: 3}
 Ticket -> TicketSequence: "numbered from\n1..1"
 Employee -> Department: "belongs to\n1..1"

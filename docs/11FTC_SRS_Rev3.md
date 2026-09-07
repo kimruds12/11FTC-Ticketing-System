@@ -163,7 +163,7 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 ### 4.4 Google Sheets Synchronization
 - FR-25. The relational database is the system of record. Synchronization is **one-way: database → sheet**. The system does not read ticket data back from the sheet. *(Closes OPEN in rev 2; see also OPEN-3.)*
 - FR-26. Ticket records are exported using the existing spreadsheet columns, unchanged: Date, Ticket No, Employee, Department, Main Issue, Concern, Assigned To, Status, Remarks.
-- FR-27. Foreign keys are resolved to display names at export time. `employee_id` becomes the employee name, `assigned_to` becomes the technician name, `main_issue_id` becomes the category label. IDs are never written to the sheet.
+- FR-27. Foreign keys are resolved to display names at export time. `employee_id` becomes the employee name, the assignee list becomes the technician names joined with `/` (`"Kim/Paul"`), `main_issue_id` becomes the category label. IDs are never written to the sheet.
 - FR-28. The sheet is displayed **newest-first**: the most recent ticket appears at the top. This ordering must be preserved.
 - FR-29. Synchronization is asynchronous. A failure to reach Google must not fail or delay ticket encoding.
 - FR-30. Synchronization is idempotent. A retried write updates the existing row for that ticket number; it never creates a duplicate.
@@ -182,6 +182,67 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 - FR-34. Audit entries are written in the same transaction as the change they describe.
 - FR-35. Audit entries are immutable. No user may edit or delete them.
 
+### 4.6 Report Generation
+- FR-36. Produce a **cross-tabulation of ticket counts: departments down, periods across**, over a chosen period range, at daily / weekly / monthly granularity, optionally filtered to one department and/or one main-issue category. Row, column, and grand totals are included, and the grand total equals the number of tickets in the range.
+- FR-37. The selectable period range is **derived from the encoded data**, never a fixed list: a period with no tickets is not offered, and a period with tickets is never omitted.
+- FR-38. A generated report can be **exported as a spreadsheet-readable file and printed as a document**, both carrying the period and filters that produced it.
+
+> **Why this section exists (rev 6).** A "Generate Reports" screen was built during the
+> UI phase against no requirement, entirely from hardcoded figures, and carried a badge
+> claiming the numbers were synced with Google Sheets. The figures were invented and the
+> department list did not match the real one. Rather than delete the screen, its purpose
+> was settled and written down here.
+>
+> **The distinction from §4.3 is deliberate.** The dashboard answers *how are we doing
+> right now* — live, operational, read at a glance. A report answers *what happened over
+> this period* — fixed, filtered, and taken out of the system to be handed to someone.
+> The dashboard has no cross-tab and needs none; a report is a document and therefore
+> needs a stable shape, which is why every active department occupies a row even when its
+> count is zero.
+>
+> **FR-37 exists because the mock-up made the failure concrete.** Its month list was
+> written by hand and would have offered months with no data and hidden months with data,
+> silently, from the first January onwards.
+>
+> **FR-38 does not require PDF generation.** Print-to-PDF is the browser's job; a report
+> laid out a second time inside a PDF library diverges from the one on screen the first
+> time a column changes. "What prints is what you looked at" is the requirement.
+
+### 4.7 Bulk Encoding
+- FR-39. Encode **several tickets in one submission**, sharing the fields a batch has in common (date, handler, status) and varying only what differs per ticket. The batch is recorded **atomically**: either every ticket in it exists, or none does.
+
+> **This is the requirement the product's purpose implies.** §2 states the system exists to
+> reduce the manual effort of maintaining the ticket log; the department fixes concerns first
+> and writes them up afterwards, usually several at a time from notes. Encoding those one at
+> a time, retyping the same date and the same technician on every one, *is* the manual work
+> being removed. A form that only ever accepts one ticket cannot satisfy the purpose.
+>
+> **Atomicity is not a nicety here, it follows from FR-9.** Nothing can be deleted, so a batch
+> that half-succeeded could not be undone: the encoder would be left guessing which rows
+> landed, and the safe-looking recovery — re-entering what appears to be missing — produces
+> duplicates. One rejected row must therefore reject the batch and write nothing.
+>
+> **Numbering gaps from a rejected batch are accepted**, consistent with the numbering rule
+> that a gap is cosmetic while a duplicate is corruption.
+
+### 4.8 Audit Review
+- FR-40. Review the audit log **across tickets** — searchable by ticket number, field, value or actor, filterable by action and by the date the change was made, paginated on the server. Restricted to the **IT Administrator**.
+
+> §4.5 already requires the entries to be *written*; without a way to read them across
+> tickets they were only visible one ticket at a time, on that ticket's own page. The
+> screen that claimed to offer this was built over an empty placeholder array, so an
+> administrator asking "who changed a status yesterday?" had no answer even though the
+> data existed.
+>
+> **Filtering belongs on the server.** The audit table is the one dataset that only ever
+> grows — nothing is deleted (FR-35) and every edit appends a row per changed field — so
+> fetching it into the browser to filter there has no ceiling.
+>
+> **Read-only, and deliberately so.** No route may create, edit or delete an entry; they
+> are written only as a side effect of the change they describe (FR-34). Restricting this
+> to the administrator was confirmed with the department: reviewing who changed what is an
+> oversight function, not part of encoding.
+
 ## 5. Ticket Entity
 
 | Field | Type | Description |
@@ -194,7 +255,7 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 | employee_id | UUID (FK) | References Employee |
 | main_issue_id | UUID (FK) | References MainIssueCategory (§6B). **Was free-text VARCHAR in rev 2.** |
 | concern | TEXT | Detailed concern |
-| assigned_to | UUID (FK, NULL) | References User (§6C). Records **who handled the concern** — a field, not a workflow stage. Nothing branches on it. |
+| *(assignment)* | — | **Not a column.** Who handled the concern lives in `ticket_assignees` → `technicians` (rev 5, ADR-0017): an ordered many-to-many, because two-technician work is ~21% of real tickets and most handlers hold no account. Still a record, not a workflow stage — nothing branches on it. |
 | created_by | UUID (FK) | References User. Who encoded the ticket. |
 | status | ENUM | **Open, Ongoing, Closed** |
 | remarks | TEXT | Resolution notes |
@@ -357,17 +418,19 @@ The 11FTC Ticketing Management System is a web-based application that centralize
 ```text
 Department (1) ----< Employee (1) ----< Ticket >---- (1) MainIssueCategory
                                           |
-                          User (1) ----<  |  (assigned_to, created_by)
+                          User (1) ----<  |  (created_by)
+                                          |
+              Technician (1) ----< TicketAssignee >---+   (who handled it, ordered)
                                           |
                           +---------------+---------------+
                           v                               v
                       AuditLog >---- (1) User        SyncOutbox
-                                          
+
 TicketSequence (scope_key) ----> allocates Ticket.ticket_no
-SyncOutbox ----> Google Sheet (_raw tab, one-way)
+SyncOutbox ----> Google Sheet (Tickets tab, one-way, newest-first)
 ```
 
-**Indexes**: `tickets(date)`, `tickets(status)`, `tickets(assigned_to, status)`, `tickets(closed_at)`, `tickets(ongoing_at)`, `sync_outbox(status, created_at)`, `employees(name_normalized)`.
+**Indexes**: `tickets(date)`, `tickets(status)`, `tickets(closed_at)`, `tickets(ongoing_at)`, `ticket_assignees(technician_id)`, `sync_outbox(status, created_at)`, `employees(name_normalized)`, `technicians(name_normalized)`.
 
 ## 11. Future Enhancements
 - SLA monitoring and ticket priority
@@ -395,6 +458,10 @@ SyncOutbox ----> Google Sheet (_raw tab, one-way)
 
 | Rev | Change |
 |---|---|
+| **8** | **Audit review specified (§4.8, FR-40).** FR-33–35 required the entries to be written but nothing required them to be *readable across tickets*, so the only view was one ticket's own history. The "Audit Logs" screen that appeared to fill the gap rendered a filter toolbar over an empty placeholder array. Recorded now with server-side filtering (the table only grows), read-only (FR-34/35), and restricted to the IT Administrator per the department's decision. Total: 40 requirements. |
+| **7** | **Bulk encoding specified (§4.7, FR-39).** The one requirement the product's own purpose already implied: §2 exists to reduce the manual effort of maintaining the log, and the department writes up several finished concerns at a time, so encoding them one-by-one — retyping the same date and technician each time — *was* the manual work. Recorded atomically because FR-9 forbids deletion: a half-written batch could not be undone, and re-entering what looked missing would create duplicates. Total: 39 requirements. |
+| **6** | **Report generation specified (§4.6, FR-36–38).** The "Generate Reports" screen existed with no requirement behind it and was built entirely from hardcoded figures, including a badge falsely claiming the numbers were synced with Google Sheets. Rather than delete it, its purpose was settled: the dashboard is the live operational view, a report is a fixed, filtered, exportable **department × period cross-tab**. FR-37 (period list derived from the data) and FR-38 (spreadsheet export + print) are written from the two concrete defects the mock-up had — a hand-written month list that would silently go stale, and export buttons wired to nothing. Total: 38 requirements. |
+| **5** | **Assignment decoupled from accounts (ADR-0017).** `assigned_to` (FK to User) and the `assigned_label` free-text fallback replaced by a **Technician directory** + ordered `TicketAssignee` join. Driven by the real data: two-technician work is 21% of tickets, 74% of handlers held no account, and FR-19 was therefore reporting on 26% of the history while omitting the busiest technician entirely. A technician is an auth-free directory entry like an Employee, resolve-or-created inline during encoding. FR-19 and FR-27 restated; no requirement added or removed. Analytics time series (FR-17, FR-21) gained a `day`/`week`/`month` granularity independent of the window. |
 | **4.1** | **Numbering defect fix.** FR-24 was defined twice — "Ongoing ticket ageing" (§4.3) and "One-way sync" (§4.4) — because the rev 4 renumbering shifted §4.4 by the wrong amount. §4.4 is now FR-25–32 and §4.5 is FR-33–35. All downstream citations in the design doc, traceability matrix, module specs, and plan were corrected; several had also been carrying pre-rev-4 numbers. Total: 35 requirements, no gaps, no duplicates. |
 | **4** | **Corrected to the department's real process.** Status ENUM rebuilt to Open / Ongoing / Closed; Pending, Assigned, In Progress, Resolved and Voided removed — they were never used. Ticket creation may now enter any status directly, defaulting to Closed (FR-2). `assigned_at` and `resolved_at` replaced by `ongoing_at` and `closed_at` (FR-7). Closed made terminal, no reopen (FR-8). Delete/void path removed (FR-9). `assigned_to` reclassified as a record of who handled the concern rather than a workflow stage. Audit actions RESOLVE and VOID removed. First-time fix rate (FR-23) and Ongoing ageing (FR-24) added — both newly answerable once the process was understood. OPEN-2 narrowed to dashboard access only; the closing question is settled. Requirements renumbered from FR-8 onward. |
 | 3 | User, Department, and MainIssueCategory entities defined. `main_issue` and `department` changed from free text to foreign keys (FR-18, FR-20). Lifecycle timestamps added (FR-21). `Voided` status and VOID audit action added (FR-2). Inline employee creation restored (FR-13–FR-15). TicketSequence re-keyed to `scope_key` (OPEN-1). SyncOutbox added (FR-29–FR-31). Sync direction stated explicitly (FR-25). Sheet ordering documented (FR-28). Permission matrix added (§3.3). Malformed tables in §6, §7, §9 repaired. Open Items Register added. |

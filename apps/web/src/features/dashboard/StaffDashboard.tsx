@@ -1,46 +1,118 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import type {
+  CountPoint,
+  DatePoint,
+  FirstTimeFixDto,
+  Granularity,
+  OngoingAgeingItem,
+  StatusCounts,
+} from "@11ftc/shared";
+import { browserApi } from "@/services/browser";
+import { analyticsService } from "@/services/analytics.service";
 import StatCard from "./StatCard";
 import ResolutionTrendChart from "./ResolutionTrendChart";
 import ByDepartmentChart from "./ByDepartmentChart";
+import ByTechnicianChart from "./ByTechnicianChart";
 import TopIssuesChart from "./TopIssuesChart";
+import {
+  GRANULARITIES,
+  RANGES,
+  describeWindow,
+  windowFor,
+  type RangeKey,
+} from "./period";
+
+interface DashData {
+  status: StatusCounts;
+  solved: DatePoint[];
+  byDept: CountPoint[];
+  byTech: CountPoint[];
+  byCat: CountPoint[];
+  ftf: FirstTimeFixDto;
+  ageing: OngoingAgeingItem[];
+}
+
+const EMPTY: DashData = {
+  status: { open: 0, ongoing: 0, closed: 0, total: 0 },
+  solved: [],
+  byDept: [],
+  byTech: [],
+  byCat: [],
+  ftf: { closed: 0, firstTimeFix: 0, rate: 0 },
+  ageing: [],
+};
 
 /**
- * StaffDashboard Component
+ * StaffDashboard — IT Staff view. Live analytics (M9) plus the Ongoing ageing queue
+ * (FR-24). Focuses on outstanding work rather than admin-wide oversight.
  *
- * Designed for IT Staff.
- * Focuses on tickets management, ongoing queues, and fast encoding actions.
+ * Defaults to ALL TIME for the same reason as the admin view: the history predates today, so
+ * a short default window renders empty and reads as a broken dashboard.
  */
 export default function StaffDashboard() {
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [periodFilter, setPeriodFilter] = useState("overall");
+  // null until mount: a live clock rendered during SSR would not match the client's time on
+  // hydration. Starting from null keeps server output and first client render identical.
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [range, setRange] = useState<RangeKey>("all");
+  const [granularity, setGranularity] = useState<Granularity>("month");
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [data, setData] = useState<DashData | null>(null);
+
+  const analyticsWindow = useMemo(
+    () => windowFor(range, granularity),
+    [range, granularity],
+  );
+  const windowLabel = describeWindow(analyticsWindow);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- avoids SSR/client time mismatch
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const handleRefresh = () => {
+  const load = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => {
+    try {
+      const svc = analyticsService(browserApi());
+      const w = analyticsWindow;
+      const [status, solved, byDept, byTech, byCat, ftf, ageing] = await Promise.all([
+        svc.status(),
+        svc.solved(w),
+        svc.byDepartment(w),
+        svc.byTechnician(w),
+        svc.byCategory(w),
+        svc.firstTimeFix(w),
+        svc.ongoingAgeing(),
+      ]);
+      setData({ status, solved, byDept, byTech, byCat, ftf, ageing });
+      setLoadError(null);
+    } catch (e) {
+      // Surfaced, never swallowed — a blocked or failing call must not look like "no data".
+      setData(EMPTY);
+      setLoadError(e instanceof Error ? e.message : "Could not reach the analytics API.");
+    } finally {
       setRefreshing(false);
-    }, 800);
-  };
+    }
+  }, [analyticsWindow]);
 
-  const formattedTime = currentTime.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate fetch on mount / period change
+    void load();
+  }, [load]);
 
-  const formattedDate = currentTime.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const stat = (n: number | undefined) => (data ? String(n ?? 0) : "—");
+  const ftfPct = data ? `${Math.round(data.ftf.rate * 100)}%` : "—";
+
+  const formattedTime = currentTime
+    ? currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })
+    : "";
+  const formattedDate = currentTime
+    ? currentTime.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+    : "";
 
   return (
     <div className="space-y-6 w-full px-4 md:px-8 py-6">
@@ -71,21 +143,40 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      {/* ── Period Filter + Action Row ──────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
+      {/* ── Range + Granularity + Action Row ──────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-            {["overall", "today", "week", "month", "year"].map((opt) => (
+            {RANGES.map((r) => (
               <button
-                key={opt}
-                onClick={() => setPeriodFilter(opt)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 capitalize ${
-                  periodFilter === opt
+                key={r.key}
+                onClick={() => {
+                  setRange(r.key);
+                  setGranularity(r.defaultGranularity);
+                }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
+                  range === r.key
                     ? "bg-white text-gray-900 shadow-sm"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                {opt}
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
+            {GRANULARITIES.map((g) => (
+              <button
+                key={g.key}
+                onClick={() => setGranularity(g.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
+                  granularity === g.key
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {g.label}
               </button>
             ))}
           </div>
@@ -93,7 +184,7 @@ export default function StaffDashboard() {
 
         <div className="flex items-center gap-3.5">
           <button
-            onClick={handleRefresh}
+            onClick={() => void load()}
             disabled={refreshing}
             className="btn-outline py-2 px-3.5 flex items-center gap-1.5 shadow-sm text-xs font-bold bg-white"
           >
@@ -107,23 +198,23 @@ export default function StaffDashboard() {
             </svg>
             Refresh
           </button>
-          <button className="btn-primary py-2.5 px-4 shadow-sm text-xs font-bold leading-none bg-slate-900 hover:bg-slate-800 text-white">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export Report
-          </button>
         </div>
       </div>
 
-      {/* ── Stat Cards (Restored values as requested) ── */}
+
+      {loadError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          Analytics could not be loaded: {loadError}
+        </div>
+      )}
+      {/* ── Stat Cards (live, M9 /analytics) ─────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Tickets Created Today"
-          value="14"
-          badge="General Activity"
+          title="Open Tickets"
+          value={stat(data?.status.open)}
+          badge="Awaiting"
           badgeColor="bg-blue-50 text-blue-700 border border-blue-200"
-          iconBg="bg-red-50"
+          iconBg="bg-blue-50"
           icon={
             <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -133,8 +224,8 @@ export default function StaffDashboard() {
         />
 
         <StatCard
-          title="Resolved Today"
-          value="8"
+          title="Resolved (Closed)"
+          value={stat(data?.status.closed)}
           badge="Support Ops"
           badgeColor="bg-teal-50 text-teal-700 border border-teal-200"
           iconBg="bg-teal-50"
@@ -148,7 +239,7 @@ export default function StaffDashboard() {
 
         <StatCard
           title="Total Ongoing"
-          value="18"
+          value={stat(data?.status.ongoing)}
           badge="Active Queue"
           badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
           iconBg="bg-amber-50"
@@ -161,15 +252,15 @@ export default function StaffDashboard() {
         />
 
         <StatCard
-          title="Assigned Tasks"
-          value="5 / 6"
-          badge="1 Pending"
-          badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
+          title="First-Time Fix"
+          value={ftfPct}
+          badge="FR-23"
+          badgeColor="bg-green-50 text-green-700 border border-green-200"
           iconBg="bg-green-50"
           icon={
             <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
           }
         />
@@ -178,7 +269,11 @@ export default function StaffDashboard() {
       {/* ── Charts Row ───────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="card p-5 lg:col-span-2 space-y-4">
-          <ResolutionTrendChart />
+          <ResolutionTrendChart
+            data={data?.solved}
+            granularity={granularity}
+            emptyHint={`No tickets were closed ${windowLabel}.`}
+          />
         </div>
 
         <div className="card p-5 space-y-4">
@@ -186,8 +281,22 @@ export default function StaffDashboard() {
             <h2 className="text-base font-bold text-gray-900">By Department</h2>
             <p className="text-xs text-gray-400 font-medium mt-0.5">Ticket volume distribution (FR-18)</p>
           </div>
-          <ByDepartmentChart />
+          <ByDepartmentChart data={data?.byDept} />
         </div>
+      </div>
+
+      {/* ── By Technician (FR-19) ─────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">By Technician</h2>
+          <p className="text-xs text-gray-400 font-medium mt-0.5">
+            Tickets handled per person (FR-19)
+          </p>
+        </div>
+        <ByTechnicianChart
+          data={data?.byTech}
+          emptyHint={`No tickets were handled ${windowLabel}.`}
+        />
       </div>
 
       {/* ── Bottom Row (Top Issues + Ongoing Tickets) ── */}
@@ -199,36 +308,42 @@ export default function StaffDashboard() {
               <p className="text-xs text-gray-400 font-medium mt-0.5">Categorized ticket breakdown (FR-20)</p>
             </div>
           </div>
-          <TopIssuesChart />
+          <TopIssuesChart data={data?.byCat} />
         </div>
 
         <div className="card p-5 space-y-4">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-base font-bold text-gray-900">Ongoing Tickets (High Priority)</h2>
+              <h2 className="text-base font-bold text-gray-900">Ongoing Tickets (Ageing)</h2>
               <p className="text-xs text-gray-400 font-medium mt-0.5">
-                Outstanding tickets queue by urgency
+                Oldest outstanding tickets first (FR-24)
               </p>
             </div>
           </div>
           <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-            {[
-              { id: "1", ticket: "IT-2026-0188", employee: "Sarah Jenkins", dept: "Sales", age: "3 days ago", issue: "Network" },
-              { id: "2", ticket: "IT-2026-0191", employee: "Marcus Chen", dept: "Engineering", age: "1 day ago", issue: "Hardware" },
-            ].map((tkt) => (
-              <div key={tkt.id} className="flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-primary-700 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-200">
-                      {tkt.ticket}
-                    </span>
-                    <span className="text-xs font-semibold text-gray-800">{tkt.employee} ({tkt.dept})</span>
+            {!data ? (
+              <p className="text-xs text-gray-400 font-medium py-6 text-center">Loading queue…</p>
+            ) : data.ageing.length === 0 ? (
+              <p className="text-xs text-gray-400 font-medium py-6 text-center">No ongoing tickets. 🎉</p>
+            ) : (
+              data.ageing.map((tkt) => (
+                <div key={tkt.ticketId} className="flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-primary-700 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-200">
+                        {tkt.ticketNo}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 font-medium mt-1">
+                      Ongoing since <span className="font-bold">{tkt.ongoingAt.slice(0, 10)}</span>
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 font-medium mt-1">Issue category: <span className="font-bold">{tkt.issue}</span></p>
+                  <span className="text-[10px] text-red-600 bg-red-50 border border-red-200 font-bold uppercase px-2 py-0.5 rounded-full">
+                    {tkt.ageDays} {tkt.ageDays === 1 ? "day" : "days"}
+                  </span>
                 </div>
-                <span className="text-[10px] text-red-600 bg-red-50 border border-red-200 font-bold uppercase px-2 py-0.5 rounded-full">{tkt.age}</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "comment": "Emit build — inherits NodeNext (ESM) + declaration from the base, unlike the source-consumption tsconfig.json. Produces dist/*.js + *.d.ts that Node (the API/worker) can run directly. See ADR-0014.",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"]
+}

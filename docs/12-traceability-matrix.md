@@ -63,7 +63,7 @@ is unreadable to the audience it was drawn for. Traceability belongs in a table.
 |---|---|---|---|
 | FR-17 | Daily / weekly / monthly statistics | View Dashboard | UC, DFD1 (8.0) |
 | FR-18 | Tickets by department | View Dashboard | ERD (`department_id` FK), DFD1 (D7) |
-| FR-19 | Tickets by technician | View Dashboard | ERD (`assigned_to` → User), CLS |
+| FR-19 | Tickets by technician | View Dashboard | ERD (`ticket_assignees` → Technician), CLS |
 | FR-20 | Tickets by main issue category | View Dashboard | ERD (`main_issue_id` FK), DFD1 (D7) |
 | FR-21 | Problems solved per period, by `closed_at` | View Dashboard | ERD (`closed_at`), STM |
 | FR-22 | Open vs Ongoing vs Closed counts | View Dashboard | UC, STM |
@@ -90,6 +90,26 @@ is unreadable to the audience it was drawn for. Traceability belongs in a table.
 | FR-33 | One entry per changed field | Write Audit Entry «include» | SQ2, ERD, DFD1 (6.0) |
 | FR-34 | Written in the same transaction | Write Audit Entry «include» | SQ1, SQ2 |
 | FR-35 | Immutable | Write Audit Entry «include» | ERD, CMP |
+
+### 2.6 Report Generation (SRS §4.6)
+
+| FR | Requirement | Use case | Diagrams |
+|---|---|---|---|
+| FR-36 | Department × period cross-tab, filtered, with totals | Generate Report | CMP (`AnalyticsService.report`) |
+| FR-37 | Period list derived from encoded data | Generate Report | CMP (`AnalyticsService.coverage`) |
+| FR-38 | Spreadsheet export and print | Generate Report | — (client-side; no server surface) |
+
+### 2.7 Bulk Encoding (SRS §4.7)
+
+| FR | Requirement | Use case | Diagrams |
+|---|---|---|---|
+| FR-39 | Batch encode, atomic | Encode Ticket (batch) | SQ1, CLS (`TicketService.encodeBulk`) |
+
+### 2.8 Audit Review (SRS §4.8)
+
+| FR | Requirement | Use case | Diagrams |
+|---|---|---|---|
+| FR-40 | Cross-ticket audit feed, admin-only | View Ticket History | CMP (`AuditService.list`), ERD |
 
 ---
 
@@ -196,6 +216,11 @@ until the module lands.
 | FR-33 | M6 | [M6-audit.md](implementation/M6-audit.md) | close-with-remarks → 2 rows | scaffold |
 | FR-34 | M6 | [M6-audit.md](implementation/M6-audit.md) | audit in same tx as change | scaffold |
 | FR-35 | M6 | [M6-audit.md](implementation/M6-audit.md) | no mutate/delete; `check:no-delete` | CI-enforced |
+| FR-36 | M9 | [M9-analytics.md](implementation/M9-analytics.md) | cross-tab cells + grand total reconciles | tested |
+| FR-37 | M9 | [M9-analytics.md](implementation/M9-analytics.md) | coverage reports real min/max date | tested |
+| FR-38 | M9 (web) | [M9-analytics.md](implementation/M9-analytics.md) | CSV carries filters; print hides chrome | manual |
+| FR-39 | M5 | [M5-ticket.md](implementation/M5-ticket.md) | one bad row → nothing written; consecutive numbers | tested |
+| FR-40 | M6 | [M6-audit.md](implementation/M6-audit.md) | admin-only 403; filters applied server-side | wired |
 
 **Decisions behind these:** [ADR-0004](adr/0004-atomic-ticket-numbering.md) (FR-4/5),
 [ADR-0005](adr/0005-three-status-terminal-closed-no-delete.md) (FR-1/2/7/8/9),
@@ -223,7 +248,7 @@ because they are pending.
 |---|---|
 | `Resolved → In Progress` (reopen) | Closed is terminal (FR-8). A recurrence is a new ticket. |
 | `Pending → In Progress`, `Assigned`, `In Progress`, `Resolved` | Four states the department has never used. Work happens before the ticket exists. |
-| `assigned → assigned` (reassign) | `assigned_to` is a record of who handled the concern, not a workflow stage. |
+| `assigned → assigned` (reassign) | The technician list is a record of who handled the concern, not a workflow stage. |
 | `Voided` status | Invented to handle encoding errors. Those are handled by editing (FR-9). |
 | IT Staff → *Close Ticket* as an open question | Settled by the process — staff solve and close directly. |
 

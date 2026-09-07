@@ -13,8 +13,13 @@
   "dependencies": {
     "@11ftc/shared": "workspace:*",
     "@reduxjs/toolkit": "^2.5.1",
+<<<<<<< HEAD
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.114.0",
+=======
+    "@supabase/ssr": "^0.12.3",
+    "@supabase/supabase-js": "^2.110.8",
+>>>>>>> a9241361e098acaaaef24b9bb1d359d2b0a6b111
     "axios": "^1.7.9",
     "next": "^16.2.10",
     "react": "^19.2.7",

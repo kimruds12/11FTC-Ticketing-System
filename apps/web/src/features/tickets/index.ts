@@ -11,5 +11,11 @@ export {
   setPage,
   resetFilters,
   ticketFiltersReducer,
-} from "./store/ticketFiltersSlice.js";
-export type { StatusFilter, TicketFiltersState } from "./store/ticketFiltersSlice.js";
+} from "./store/ticketFiltersSlice";
+export type { StatusFilter, TicketFiltersState } from "./store/ticketFiltersSlice";
+
+export { default as TicketQueueClient } from "./TicketQueueClient";
+export { default as TicketDetailClient } from "./TicketDetailClient";
+export { default as EncodeTicketForm } from "./EncodeTicketForm";
+export { default as StatusBadge } from "./StatusBadge";
+export type { TicketFilterValues } from "./TicketFilters";

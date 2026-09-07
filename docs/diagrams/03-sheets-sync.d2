@@ -38,7 +38,7 @@ worker: Sync Worker {
   style.font-color: "#ffffff"
 
   claim: "1. Claim batch\nSELECT ... WHERE status='PENDING'\nORDER BY created_at\nLIMIT 100 FOR UPDATE SKIP LOCKED"
-  map: "2. Project to sheet row\nemployee_id → name\nassigned_to → technician name\nmain_issue_id → label"
+  map: "2. Project to sheet row\nemployee_id → name\nassignees → \"Kim/Paul\"\nmain_issue_id → label"
   locate: "3. Locate row in _raw\nraw_row_number if cached,\nelse find row_key (ticket_no)\nin column B"
   push: "4. New → values.append to _raw\n Existing → values.update at\n cached row (rows never shift)"
   mark: "5. Mark SENT +\ncache raw_row_number"

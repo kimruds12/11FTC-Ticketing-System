@@ -5,35 +5,41 @@
 Second-highest risk, and the only part that talks to a system we don't control. It fails
 silently — it corrupts the *wrong* ticket's row, and only after the sheet has shifted.
 
-## Why `_raw` is append-only (read this before touching the writer)
+## Why position is never trusted (read this before touching the writer)
 
 The IT team's sheet is **newest-first** — each new ticket is inserted at the top, which
 shifts every existing row down by one. So any stored row index goes stale the moment the
 next ticket is encoded, and a status update or retry then writes to **another ticket's
-row**. That is silent corruption.
+row**. That is silent corruption, and it is the failure this module exists to prevent.
 
-The fix: the worker only ever **appends** to a hidden `_raw` tab. Row N stays row N
-forever. The visible `Tickets` tab is a `=QUERY(_raw...order by ... desc)` view — the team
-still sees newest-first, but storage is stable.
+The worker writes **directly into the visible `Tickets` tab**, inserting new tickets at the
+top so the team's ordering and workflow are preserved (ADR-0016, superseding the `_raw`
+design in ADR-0003). Because rows therefore *do* shift, the safety property rests entirely
+on rule 1 below — there is no longer a structural safety net.
 
 ## Invariants
 
 1. **Locate rows by `row_key` (the ticket_no), never by remembered position.**
-   `raw_row_number` is only a cache of where the row was found in the append-only `_raw`
-   tab — safe precisely because `_raw` never shifts. If it's absent or stale, fall back to
-   scanning column B for `row_key`.
-2. **`_raw` is append-only.** New tickets `values.append`; existing rows `values.update`
-   at `raw_row_number`. Never insert-at-top in `_raw`.
-3. **The outbox row commits with the ticket** (M7). "Ticket exists" and "sheet owes an
+   Every operation re-scans column B for the ticket number. `raw_row_number` is a
+   **diagnostic breadcrumb that is written but never read back**. Do not "optimise" the
+   scan away by trusting it — that reintroduces the corruption bug directly.
+2. **New tickets are inserted ABOVE the first ticket row** (`InsertDimensionRequest`), then
+   filled; existing tickets are updated in place wherever they now sit. Header and spacer
+   rows are located by value, never assumed.
+3. **Columns A–I only** — `Date, Ticket No, Employee, Department, Main issue, Concern,
+   Assigned to, Status, Remarks`, mirroring the team's existing layout exactly. Do not add
+   columns (e.g. `ongoing_at`/`closed_at`) the team did not ask for; Postgres is the system
+   of record for those.
+4. **The outbox row commits with the ticket** (M7). "Ticket exists" and "sheet owes an
    update" become atomically true together. BullMQ is only a trigger; the job payload
    carries "wake up and drain", never ticket data. A lost job must be harmless.
-4. **One-way only (FR-25).** No path reads ticket data back from the sheet. The database
+5. **One-way only (FR-25).** No path reads ticket data back from the sheet. The database
    is the system of record; the sheet is a mirror.
-5. **Idempotent (FR-30).** Running the same outbox row twice updates one row, never
-   appends a second copy.
-6. **Sync failure never fails encoding (FR-29).** Break the Google credentials and
+6. **Idempotent (FR-30).** Running the same outbox row twice updates one row, never
+   inserts a second copy.
+7. **Sync failure never fails encoding (FR-29).** Break the Google credentials and
    encoding must still succeed.
-7. **Denormalize at the boundary only** (FR-27): `employee_id`→name, `assigned_to`→name,
+8. **Denormalize at the boundary only** (FR-27): `employee_id`→name, `assigned_to`→name,
    `main_issue_id`→label happen here, at write time. IDs stay in Postgres.
 
 ## Worker mechanics
@@ -46,7 +52,9 @@ still sees newest-first, but storage is stable.
 - Retry: `attempts++`, exponential backoff, `FAILED` after 5, surfaced in Bull Board.
 - Batch 100 rows per call — Sheets allows ~60 writes/min/user. Matters most at backfill.
 
-## Open item
+## Resolved
 
-- **OPEN-3:** if the IT team must keep hand-editing the sheet, the fallback is
-  `InsertDimensionRequest` + developer metadata pinned per row — never a bare row index.
+- **OPEN-3 — answered.** The IT team does keep working in the `Tickets` tab, so the worker
+  writes there directly with `InsertDimensionRequest` (ADR-0016) instead of adopting a
+  read-only `=QUERY(_raw ...)` view. Hand-edited rows are fine as long as column B holds the
+  ticket number — rows are found by value, never by a remembered index.
