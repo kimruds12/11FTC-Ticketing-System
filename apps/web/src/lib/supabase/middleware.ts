@@ -21,25 +21,34 @@ export async function updateSession(
 ): Promise<{ response: NextResponse; user: User | null }> {
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(env.supabaseInternalUrl, env.supabaseAnonKey, {
-    // Must match the browser client exactly — see cookie-name.ts.
-    cookieOptions: { name: AUTH_COOKIE_NAME },
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
+  if (!env.supabaseInternalUrl || !env.supabaseAnonKey) {
+    return { response, user: null };
+  }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return { response, user };
+  try {
+    const supabase = createServerClient(env.supabaseInternalUrl, env.supabaseAnonKey, {
+      // Must match the browser client exactly — see cookie-name.ts.
+      cookieOptions: { name: AUTH_COOKIE_NAME },
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
+      },
+    });
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return { response, user };
+  } catch (error) {
+    console.error("Middleware updateSession error:", error);
+    return { response, user: null };
+  }
 }

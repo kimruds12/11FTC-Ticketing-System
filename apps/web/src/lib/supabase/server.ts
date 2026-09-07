@@ -35,9 +35,20 @@ export async function getServerSupabase() {
   });
 }
 
-/** Server-side session token for `Authorization: Bearer` (our API re-verifies it via JWKS). */
 export async function getServerToken(): Promise<string | undefined> {
-  const supabase = await getServerSupabase();
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token;
+  try {
+    if (!env.supabaseInternalUrl || !env.supabaseAnonKey) return undefined;
+    const supabase = await getServerSupabase();
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token;
+  } catch (error: any) {
+    if (
+      error?.digest === "DYNAMIC_SERVER_USAGE" ||
+      error?.message?.includes("DYNAMIC_SERVER_USAGE")
+    ) {
+      throw error;
+    }
+    console.error("getServerToken error:", error);
+    return undefined;
+  }
 }
