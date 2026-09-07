@@ -24,13 +24,26 @@ export default function SignInForm() {
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const TIMEOUT_MS = 10_000;
+      
+      const result = await Promise.race([
+        supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        }),
+        new Promise<"timeout">((r) => setTimeout(() => r("timeout"), TIMEOUT_MS)),
+      ]);
+
+      if (result === "timeout") {
+        setLoading(false);
+        setError("Sign-in timed out. Please check your network connection and try again.");
+        return;
+      }
+
+      const { data, error: authError } = result;
 
       if (authError) {
-        // Map Supabase error messages to user-friendly text
+        setLoading(false);
         const msg = authError.message.toLowerCase();
         if (authError.message === "Invalid login credentials") {
           setError("Incorrect email or password.");
@@ -45,12 +58,11 @@ export default function SignInForm() {
       }
 
       if (!data.user || !data.session) {
+        setLoading(false);
         setError("Authentication failed. Please try again.");
         return;
       }
 
-      // Read role from user_metadata or app_metadata. The backend sets this when
-      // creating the user. Default to IT_STAFF if not set.
       const userEmail = (data.user.email ?? email).trim().toLowerCase();
       const metadata = data.user.user_metadata ?? {};
       const appMetadata = data.user.app_metadata ?? {};
@@ -61,7 +73,6 @@ export default function SignInForm() {
           ? UserRole.IT_ADMINISTRATOR
           : UserRole.IT_STAFF);
 
-      // Build the display name from metadata or fall back to email
       const fullName: string =
         metadata.full_name ??
         metadata.fullName ??
@@ -78,8 +89,14 @@ export default function SignInForm() {
         }),
       );
 
-      router.push("/dashboard");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ftrace-user-role", role);
+        window.location.href = "/dashboard";
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
+      setLoading(false);
       const errStr = String(err?.message || err).toLowerCase();
       if (errStr.includes("fetch") || errStr.includes("network") || err?.name === "TypeError") {
         setError("Could not reach the sign-in service. Check your connection and try again.");
