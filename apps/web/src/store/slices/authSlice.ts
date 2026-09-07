@@ -16,7 +16,6 @@ export interface AuthState {
   status: "unknown" | "authenticated" | "unauthenticated";
 }
 
-<<<<<<< HEAD
 const getInitialState = (): AuthState => {
   if (typeof window !== "undefined") {
     const savedRole = localStorage.getItem("ftrace-user-role");
@@ -25,6 +24,7 @@ const getInitialState = (): AuthState => {
         userId: savedRole === UserRole.IT_ADMINISTRATOR ? "usr-admin" : "usr-staff",
         role: savedRole as UserRole,
         fullName: savedRole === UserRole.IT_ADMINISTRATOR ? "Admin User" : "IT Staff",
+        email: null,
         status: "authenticated",
       };
     }
@@ -33,37 +33,12 @@ const getInitialState = (): AuthState => {
     userId: null,
     role: null,
     fullName: null,
+    email: null,
     status: "unauthenticated",
   };
-=======
-/**
- * Empty, and IDENTICAL on the server and the client.
- *
- * This used to branch on `typeof window` and read a role out of localStorage, falling back
- * to a hardcoded `usr-admin` / "Admin User" / `authenticated` session. Two failures came out
- * of that, and the hydration warning was only the loud one:
- *
- *  1. The server has no `window`, so it always rendered the hardcoded ADMIN. The client read
- *     localStorage and rendered the real role. Server and client disagreed on every render
- *     for a non-admin — which is exactly the "server/client branch" case React names first
- *     in that error.
- *  2. The fallback invented a signed-in administrator that no one had authenticated as.
- *     `AdminDashboard` and the admin-only Directory link were server-rendered for IT Staff
- *     before the real session arrived, and the header showed a fabricated name. Cosmetic
- *     rather than a hole — the API's RolesGuard is the boundary (ADR-0011) — but it showed
- *     people a privilege level they do not hold, from data the system never held.
- *
- * The session's only source is the server: the `(app)` shell verifies it and hands it to
- * `AuthHydrator`. localStorage is not a session store, and a default is not a session.
- */
-const initialState: AuthState = {
-  userId: null,
-  role: null,
-  fullName: null,
-  email: null,
-  status: "unknown",
->>>>>>> a9241361e098acaaaef24b9bb1d359d2b0a6b111
 };
+
+const initialState: AuthState = getInitialState();
 
 const authSlice = createSlice({
   name: "auth",

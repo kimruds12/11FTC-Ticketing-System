@@ -71,6 +71,7 @@ export default function SignInForm() {
           userId: data.user.id,
           role,
           fullName,
+          email: data.user.email ?? email.trim(),
         }),
       );
 
