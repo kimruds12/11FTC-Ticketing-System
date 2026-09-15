@@ -119,14 +119,13 @@ export default function ResolutionTrendChart({
       });
     }
 
-    // Daily view
+    // Daily view (Month and day only, e.g. 09/01)
     if (data.length > 0 && activeGranularity === "day") {
       return data.slice(-11).map((d) => {
         const parts = d.date.split("-");
-        const y = parts[0] ?? "2026";
         const m = parts[1] ?? "09";
         const day = parts[2] ?? "01";
-        const formattedDate = `${m}/${day}/${y}`;
+        const formattedDate = `${m}/${day}`;
         return {
           label: formattedDate,
           fullDate: formattedDate,
@@ -136,10 +135,10 @@ export default function ResolutionTrendChart({
       });
     }
 
-    // Fallback daily data (09/01/2026 to 09/11/2026)
+    // Fallback daily data (09/01 to 09/11)
     const days = [
-      "09/01/2026", "09/02/2026", "09/03/2026", "09/04/2026", "09/05/2026",
-      "09/06/2026", "09/07/2026", "09/08/2026", "09/09/2026", "09/10/2026", "09/11/2026"
+      "09/01", "09/02", "09/03", "09/04", "09/05",
+      "09/06", "09/07", "09/08", "09/09", "09/10", "09/11"
     ];
     const fallbackDaily = [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     return days.map((day, idx) => ({
@@ -339,17 +338,16 @@ export default function ResolutionTrendChart({
             </g>
           ))}
 
-          {/* X-Axis Labels (Rotated -35 deg like reference images) */}
+          {/* X-Axis Labels (Straight horizontal letters, no slant) */}
           {chartPoints.map((pt, i) => {
             const xPos = coords[i]?.x ?? pL;
-            const yPos = pT + ch + 18;
+            const yPos = pT + ch + 16;
             return (
               <text
                 key={i}
                 x={xPos}
                 y={yPos}
-                textAnchor="end"
-                transform={`rotate(-35, ${xPos}, ${yPos})`}
+                textAnchor="middle"
                 className="text-[10px] fill-slate-500 font-bold tracking-tight"
               >
                 {pt.label}

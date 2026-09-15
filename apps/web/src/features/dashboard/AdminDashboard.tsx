@@ -10,13 +10,13 @@ import type {
 } from "@11ftc/shared";
 import { browserApi } from "@/services/browser";
 import { analyticsService } from "@/services/analytics.service";
+import { ticketsService } from "@/services/tickets.service";
 import StatCard from "./StatCard";
 import ResolutionTrendChart from "./ResolutionTrendChart";
 import ByDepartmentChart from "./ByDepartmentChart";
 import ByTechnicianChart from "./ByTechnicianChart";
 import TopIssuesChart from "./TopIssuesChart";
 import {
-  GRANULARITIES,
   RANGES,
   describeWindow,
   windowFor,
@@ -25,6 +25,7 @@ import {
 
 interface DashData {
   status: StatusCounts;
+  todayCount: number;
   solved: DatePoint[];
   byDept: CountPoint[];
   byTech: CountPoint[];
@@ -34,6 +35,7 @@ interface DashData {
 
 const EMPTY: DashData = {
   status: { open: 0, ongoing: 0, closed: 0, total: 0 },
+  todayCount: 0,
   solved: [],
   byDept: [],
   byTech: [],
@@ -72,16 +74,27 @@ export default function AdminDashboard() {
     setRefreshing(true);
     try {
       const svc = analyticsService(browserApi());
+      const tSvc = ticketsService(browserApi());
       const w = analyticsWindow;
-      const [status, solved, byDept, byTech, byCat, ftf] = await Promise.all([
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const [status, solved, byDept, byTech, byCat, ftf, todayRes] = await Promise.all([
         svc.status(),
         svc.solved(w),
         svc.byDepartment(w),
         svc.byTechnician(w),
         svc.byCategory(w),
         svc.firstTimeFix(w),
+        tSvc.list({ dateFrom: todayStr, dateTo: todayStr, limit: 1 }).catch(() => ({ total: 0 })),
       ]);
-      setData({ status, solved, byDept, byTech, byCat, ftf });
+      setData({
+        status,
+        todayCount: todayRes?.total ?? 0,
+        solved,
+        byDept,
+        byTech,
+        byCat,
+        ftf,
+      });
       setLoadError(null);
     } catch (e) {
       // SURFACE it. This used to swallow the error and render zeros, which made a total
@@ -138,29 +151,33 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── Range + Granularity + Actions Row ────────────
-          Two independent controls: WHICH tickets (range) and HOW they're bucketed
-          (granularity). Changing the range moves granularity to whatever reads best for that
-          span, but the user can then override it. */}
+      {/* ── Range + Granularity + Actions Row ──────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-            {RANGES.map((r) => (
-              <button
-                key={r.key}
-                onClick={() => {
-                  setRange(r.key);
-                  setGranularity(r.defaultGranularity);
-                }}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
-                  range === r.key
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
+          <div className="relative inline-block">
+            <select
+              value={range}
+              onChange={(e) => {
+                const selectedKey = e.target.value as RangeKey;
+                const found = RANGES.find((r) => r.key === selectedKey);
+                if (found) {
+                  setRange(found.key);
+                  setGranularity(found.defaultGranularity);
+                }
+              }}
+              className="appearance-none bg-white border border-gray-200 text-slate-800 text-xs font-bold rounded-lg pl-3.5 pr-8 py-2 shadow-xs hover:border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 cursor-pointer transition-all"
+            >
+              {RANGES.map((r) => (
+                <option key={r.key} value={r.key} className="font-semibold text-xs py-1">
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -186,34 +203,34 @@ export default function AdminDashboard() {
       )}
       {/* ── Stat Cards (live, M9 /analytics/status + first-time-fix) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard title="Open Tickets" value={stat(data?.status.open)} badge="Awaiting" badgeColor="bg-blue-50 text-blue-700 border border-blue-200" iconBg="bg-blue-50"
-          icon={<svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>} />
+        <StatCard
+          title="Today's Tickets"
+          value={stat(data?.todayCount)}
+          badge="Logged Today"
+          badgeColor="bg-blue-50 text-blue-700 border border-blue-200"
+          iconBg="bg-blue-50"
+          icon={
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+            </svg>
+          }
+        />
         <StatCard title="Ongoing" value={stat(data?.status.ongoing)} badge="Active Queue" badgeColor="bg-amber-50 text-amber-700 border border-amber-200" iconBg="bg-amber-50"
           icon={<svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
         <StatCard title="Resolved (Closed)" value={stat(data?.status.closed)} badge="Support Ops" badgeColor="bg-teal-50 text-teal-700 border border-teal-200" iconBg="bg-teal-50"
           icon={<svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
         <StatCard title="Total Tickets" value={stat(data?.status.total)} badge="All Time" badgeColor="bg-gray-50 text-gray-700 border border-gray-200" iconBg="bg-slate-50"
           icon={<svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} />
-        <StatCard title="First-Time Fix" value={ftfPct} badge="FR-23" badgeColor="bg-green-50 text-green-700 border border-green-200" iconBg="bg-green-50"
+        <StatCard title="First-Time Fix" value={ftfPct} badge="Resolved Tickets" badgeColor="bg-green-50 text-green-700 border border-green-200" iconBg="bg-green-50"
           icon={<svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
       </div>
 
-      {/* ── 1. Resolution Trend Chart (Full Width) ───────────────────────── */}
-      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
-        <ResolutionTrendChart
-          data={data?.solved}
-          granularity={granularity}
-          onGranularityChange={setGranularity}
-          emptyHint={`No tickets were closed ${windowLabel}.`}
-        />
-      </div>
-
-      {/* ── 2. Middle Section: Main Issue Categories (Donut Chart) + By Technician ── */}
+      {/* ── 1. Top Section: Main Issue Categories (Donut Chart) + By Technician ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card p-6 space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
           <div>
             <h2 className="text-base font-extrabold text-slate-900">Main Issue Categories</h2>
-            <p className="text-xs text-slate-400 font-semibold mt-0.5">Top issue types and percentage distribution (FR-20)</p>
+            <p className="text-xs text-slate-400 font-semibold mt-0.5">Top issue types and percentage distribution</p>
           </div>
           <TopIssuesChart data={data?.byCat} />
         </div>
@@ -222,7 +239,7 @@ export default function AdminDashboard() {
           <div>
             <h2 className="text-base font-extrabold text-slate-900">By Technician</h2>
             <p className="text-xs text-slate-400 font-semibold mt-0.5">
-              Tickets handled per person (FR-19)
+              Tickets handled per person
             </p>
           </div>
           <ByTechnicianChart
@@ -232,13 +249,23 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── 3. Bottom Section: By Department (Full Width Vertical Bar Graph) ── */}
+      {/* ── 2. Middle Section: By Department (Full Width) ── */}
       <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
         <div>
           <h2 className="text-base font-extrabold text-slate-900">By Department</h2>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">Administrative ticket distribution per department (FR-18)</p>
+          <p className="text-xs text-slate-400 font-semibold mt-0.5">Administrative ticket distribution per department</p>
         </div>
         <ByDepartmentChart data={data?.byDept} />
+      </div>
+
+      {/* ── 3. Bottom Section: Resolution Trend Chart (Full Width) ───────────────────────── */}
+      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
+        <ResolutionTrendChart
+          data={data?.solved}
+          granularity={granularity}
+          onGranularityChange={setGranularity}
+          emptyHint={`No tickets were closed ${windowLabel}.`}
+        />
       </div>
     </div>
   );
