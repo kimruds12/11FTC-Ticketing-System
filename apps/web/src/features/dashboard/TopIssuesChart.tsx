@@ -3,14 +3,15 @@
 import { useState } from "react";
 import type { CountPoint } from "@11ftc/shared";
 
+// 7 distinctly different, high-contrast colors (no two colors similar)
 const SLICE_COLORS = [
-  "#2563EB", // Primary Blue
-  "#1D4ED8", // Darker Blue
-  "#059669", // Emerald Green
-  "#10B981", // Light Green
-  "#D97706", // Amber
-  "#8B5CF6", // Purple
-  "#EC4899", // Pink
+  "#E11D48", // Vivid Crimson Rose
+  "#2563EB", // Bright Cobalt Blue
+  "#D97706", // Warm Golden Amber
+  "#059669", // Rich Emerald Green
+  "#7C3AED", // Deep Royal Violet
+  "#0891B2", // Deep Ocean Cyan
+  "#EA580C", // Vibrant Tangerine
 ];
 
 /**
@@ -47,7 +48,7 @@ function getDonutSlicePath(
 }
 
 /**
- * FR-20 — Main Issue Categories Donut Chart matching reference picture 2
+ * FR-20 — Main Issue Categories Donut Chart with enlarged ring for prominent visibility
  */
 export default function TopIssuesChart({ data = [] }: { data?: CountPoint[] }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -58,20 +59,21 @@ export default function TopIssuesChart({ data = [] }: { data?: CountPoint[] }) {
 
   const total = data.reduce((sum, d) => sum + d.count, 0) || 1;
 
-  // Calculate angles for slices
+  // Calculate angles for slices (viewBox 240x240, center 120,120)
   let currentAngle = 0;
   const slices = data.map((item, idx) => {
     const pct = Math.round((item.count / total) * 100);
     const angleSpan = (item.count / total) * 360;
     const startAngle = currentAngle;
-    const endAngle = currentAngle + angleSpan - 1.5; // slight gap
+    const endAngle = currentAngle + angleSpan - 1.2; // clean separation gap
     currentAngle += angleSpan;
 
     const midAngle = startAngle + angleSpan / 2;
     const midRad = ((midAngle - 90) * Math.PI) / 180;
-    const labelR = 66; // midpoint between inner (50) and outer (82)
-    const labelX = 100 + labelR * Math.cos(midRad);
-    const labelY = 100 + labelR * Math.sin(midRad);
+    // Midpoint radius for centered percentage label
+    const labelR = 80;
+    const labelX = 120 + labelR * Math.cos(midRad);
+    const labelY = 120 + labelR * Math.sin(midRad);
 
     return {
       ...item,
@@ -84,41 +86,41 @@ export default function TopIssuesChart({ data = [] }: { data?: CountPoint[] }) {
     };
   });
 
-  // Divide legend into 2 columns (left column, right column) like picture 2
+  // Divide legend into 2 columns (left column, right column)
   const midIdx = Math.ceil(slices.length / 2);
   const leftSlices = slices.slice(0, midIdx);
   const rightSlices = slices.slice(midIdx);
 
   return (
-    <div className="w-full space-y-6 select-none font-sans">
+    <div className="w-full space-y-5 select-none font-sans">
       {/* Header with total badge */}
       <div className="flex items-baseline gap-2">
-        <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
           ({total} total tickets)
         </span>
       </div>
 
-      {/* SVG Donut Chart */}
-      <div className="relative flex justify-center items-center py-2">
-        <svg viewBox="0 0 200 200" className="w-56 h-56 overflow-visible">
+      {/* Enlarged SVG Donut Chart */}
+      <div className="relative flex justify-center items-center py-1">
+        <svg viewBox="0 0 240 240" className="w-64 h-64 sm:w-72 sm:h-72 overflow-visible">
           {slices.map((slice, i) => {
             const isHovered = hoveredIdx === i;
             return (
               <g key={slice.key} onMouseEnter={() => setHoveredIdx(i)} onMouseLeave={() => setHoveredIdx(null)}>
                 <path
-                  d={getDonutSlicePath(100, 100, isHovered ? 86 : 82, 50, slice.startAngle, slice.endAngle)}
+                  d={getDonutSlicePath(120, 120, isHovered ? 108 : 104, 56, slice.startAngle, slice.endAngle)}
                   fill={slice.color}
-                  className="transition-all duration-200 cursor-pointer shadow-sm"
+                  className="transition-all duration-200 cursor-pointer hover:opacity-95"
                   stroke="#FFFFFF"
-                  strokeWidth="2"
+                  strokeWidth="2.5"
                 />
-                {/* Percentage text inside slice if > 4% */}
-                {slice.pct >= 5 && (
+                {/* Clearly visible percentage text inside slice */}
+                {slice.pct >= 4 && (
                   <text
                     x={slice.labelX}
                     y={slice.labelY + 4}
                     textAnchor="middle"
-                    className="fill-white font-extrabold text-[10px] pointer-events-none drop-shadow-sm"
+                    className="fill-white font-black text-[11px] sm:text-xs pointer-events-none drop-shadow-md select-none"
                   >
                     {slice.pct}%
                   </text>
@@ -127,39 +129,39 @@ export default function TopIssuesChart({ data = [] }: { data?: CountPoint[] }) {
             );
           })}
 
-          {/* Center text in donut */}
-          <circle cx={100} cy={100} r={46} className="fill-white" />
-          <text x={100} y={96} textAnchor="middle" className="fill-slate-900 font-extrabold text-lg">
+          {/* Center hole text in donut */}
+          <circle cx={120} cy={120} r={52} className="fill-white drop-shadow-sm" />
+          <text x={120} y={116} textAnchor="middle" className="fill-slate-900 font-black text-xl">
             {hoveredIdx !== null && slices[hoveredIdx] ? slices[hoveredIdx].count : total}
           </text>
-          <text x={100} y={112} textAnchor="middle" className="fill-slate-400 font-bold text-[10px] uppercase tracking-wider">
-            {hoveredIdx !== null && slices[hoveredIdx] ? slices[hoveredIdx].key.slice(0, 10) : "Tickets"}
+          <text x={120} y={133} textAnchor="middle" className="fill-slate-400 font-extrabold text-[10px] uppercase tracking-wider">
+            {hoveredIdx !== null && slices[hoveredIdx] ? slices[hoveredIdx].key.slice(0, 11) : "Tickets"}
           </text>
         </svg>
       </div>
 
-      {/* 2-Column Legend matching Picture 2 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 pt-2 border-t border-slate-100 text-xs">
-        <div className="space-y-2.5">
+      {/* 2-Column Legend matching Reference */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 pt-3 border-t border-slate-100 text-xs">
+        <div className="space-y-2">
           {leftSlices.map((s) => (
             <div key={s.key} className="flex items-center justify-between group cursor-default">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <span className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: s.color }} />
                 <span className="font-bold text-slate-700 truncate group-hover:text-slate-900">{s.key}</span>
               </div>
-              <span className="font-extrabold text-slate-900 ml-2">{s.count}</span>
+              <span className="font-black text-slate-900 ml-2">{s.count}</span>
             </div>
           ))}
         </div>
 
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {rightSlices.map((s) => (
             <div key={s.key} className="flex items-center justify-between group cursor-default">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <span className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: s.color }} />
                 <span className="font-bold text-slate-700 truncate group-hover:text-slate-900">{s.key}</span>
               </div>
-              <span className="font-extrabold text-slate-900 ml-2">{s.count}</span>
+              <span className="font-black text-slate-900 ml-2">{s.count}</span>
             </div>
           ))}
         </div>
@@ -167,4 +169,5 @@ export default function TopIssuesChart({ data = [] }: { data?: CountPoint[] }) {
     </div>
   );
 }
+
 
