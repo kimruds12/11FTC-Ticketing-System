@@ -162,22 +162,6 @@ export default function AdminDashboard() {
               </button>
             ))}
           </div>
-
-          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-            {GRANULARITIES.map((g) => (
-              <button
-                key={g.key}
-                onClick={() => setGranularity(g.key)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
-                  granularity === g.key
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="flex items-center gap-3.5">
@@ -214,38 +198,30 @@ export default function AdminDashboard() {
           icon={<svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
       </div>
 
-      {/* ── Charts Row ───────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-5 lg:col-span-2 space-y-4">
-          <ResolutionTrendChart
-            data={data?.solved}
-            granularity={granularity}
-            emptyHint={`No tickets were closed ${windowLabel}.`}
-          />
-        </div>
-        <div className="card p-5 space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">By Department</h2>
-            <p className="text-xs text-gray-400 font-medium mt-0.5">Administrative ticket distribution (FR-18)</p>
-          </div>
-          <ByDepartmentChart data={data?.byDept} />
-        </div>
+      {/* ── 1. Resolution Trend Chart (Full Width) ───────────────────────── */}
+      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
+        <ResolutionTrendChart
+          data={data?.solved}
+          granularity={granularity}
+          onGranularityChange={setGranularity}
+          emptyHint={`No tickets were closed ${windowLabel}.`}
+        />
       </div>
 
-      {/* ── Bottom Section ───────────────────────────── */}
+      {/* ── 2. Middle Section: Main Issue Categories (Donut Chart) + By Technician ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-5 space-y-4">
+        <div className="card p-6 space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
           <div>
-            <h2 className="text-base font-bold text-gray-900">Main Issue Categories</h2>
-            <p className="text-xs text-gray-400 font-medium mt-0.5">Top issues count and percentage (FR-20)</p>
+            <h2 className="text-base font-extrabold text-slate-900">Main Issue Categories</h2>
+            <p className="text-xs text-slate-400 font-semibold mt-0.5">Top issue types and percentage distribution (FR-20)</p>
           </div>
           <TopIssuesChart data={data?.byCat} />
         </div>
 
-        <div className="card p-5 space-y-4">
+        <div className="card p-6 space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
           <div>
-            <h2 className="text-base font-bold text-gray-900">By Technician</h2>
-            <p className="text-xs text-gray-400 font-medium mt-0.5">
+            <h2 className="text-base font-extrabold text-slate-900">By Technician</h2>
+            <p className="text-xs text-slate-400 font-semibold mt-0.5">
               Tickets handled per person (FR-19)
             </p>
           </div>
@@ -254,6 +230,15 @@ export default function AdminDashboard() {
             emptyHint={`No tickets were handled ${windowLabel}.`}
           />
         </div>
+      </div>
+
+      {/* ── 3. Bottom Section: By Department (Full Width Vertical Bar Graph) ── */}
+      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-900">By Department</h2>
+          <p className="text-xs text-slate-400 font-semibold mt-0.5">Administrative ticket distribution per department (FR-18)</p>
+        </div>
+        <ByDepartmentChart data={data?.byDept} />
       </div>
     </div>
   );
