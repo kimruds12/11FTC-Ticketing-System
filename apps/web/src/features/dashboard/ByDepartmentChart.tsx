@@ -3,167 +3,141 @@
 import { useState } from "react";
 import type { CountPoint } from "@11ftc/shared";
 
+// 16 distinct, high-contrast vibrant colors (ensuring no two adjacent or nearby colors look similar)
+const DEPT_COLORS = [
+  "#D97706", // Amber / Warm Gold
+  "#2563EB", // Royal Blue
+  "#8B5CF6", // Purple / Violet
+  "#059669", // Emerald Green
+  "#4F46E5", // Deep Indigo
+  "#E11D48", // Vivid Crimson / Rose
+  "#0891B2", // Bright Ocean Cyan
+  "#EA580C", // Vibrant Tangerine
+  "#0D9488", // Dark Teal
+  "#7C3AED", // Violet
+  "#DB2777", // Deep Pink
+  "#16A34A", // Green
+  "#0284C7", // Sky Blue
+  "#B45309", // Warm Bronze
+  "#64748B", // Cool Slate
+  "#6D28D9", // Deep Royal Purple
+];
+
 /**
- * FR-18 — Ticket Volume By Department (Vertical Bar Graph)
- * Displays all departments in a spacious, horizontally scrollable frame with vertical red bars.
+ * FR-18 — Ticket Volume By Department (Horizontal Bar Graph)
+ * Styled like the horizontal reference graph (Picture 3):
+ * - Department name on the left.
+ * - Horizontal rounded pill bars with solid, distinct colors per department.
+ * - Exact count displayed directly at the tip/end of each bar (e.g. "10 count").
+ * - Subtle vertical dotted guidelines and tick scale along the bottom.
+ * - Displays all departments accurately sorted by volume.
  */
-export default function ByDepartmentChart({ data = [] }: { data?: CountPoint[] }) {
+export default function ByDepartmentChart({
+  data = [],
+}: {
+  data?: CountPoint[];
+}) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   if (data.length === 0) {
-    return <p className="text-xs text-slate-400 font-medium py-10 text-center">No department data available.</p>;
+    return (
+      <p className="text-xs text-slate-400 font-medium py-10 text-center">
+        No department data available.
+      </p>
+    );
   }
 
-  const maxVal = Math.max(1, ...data.map((d) => d.count));
+  // Sort descending by ticket count to match the ranking design
+  const sortedData = [...data].sort((a, b) => b.count - a.count);
+  const maxVal = Math.max(1, ...sortedData.map((d) => d.count));
+  const total = sortedData.reduce((sum, d) => sum + d.count, 0);
 
-  // Dynamic canvas width based on number of departments (minimum 1100px for breathing room)
-  const canvasWidth = Math.max(1100, data.length * 45);
-  const height = 280;
-  const pL = 80; // Extra left padding to ensure space gap for Y-axis numbers
-  const pR = 40;
-  const pT = 35; // extra top margin for count labels above max bar
-  const pB = 100; // bottom padding for rotated department names
-  const cw = canvasWidth - pL - pR;
-  const ch = height - pT - pB;
-
-  const barWidth = Math.max(14, Math.min(26, (cw / data.length) * 0.6));
-
-  // Horizontal Grid tick steps (4 steps)
-  const yTicks = [
-    maxVal,
-    Math.round(maxVal * 0.75),
-    Math.round(maxVal * 0.5),
+  // 5 Vertical scale ticks (0%, 25%, 50%, 75%, 100%)
+  const ticks = [
+    0,
     Math.round(maxVal * 0.25),
-    0
+    Math.round(maxVal * 0.5),
+    Math.round(maxVal * 0.75),
+    maxVal,
   ];
 
   return (
-    <div className="w-full space-y-2 font-sans select-none">
-      {/* Scrollable Container with horizontal drag / scroll */}
-      <div className="relative w-full overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
-        <svg
-          viewBox={`0 0 ${canvasWidth} ${height}`}
-          style={{ minWidth: `${canvasWidth}px` }}
-          className="w-full h-auto overflow-visible"
-        >
-          {/* Horizontal Background Grid Lines */}
-          {yTicks.map((val, idx) => {
-            const yPos = pT + (idx / (yTicks.length - 1)) * ch;
-            return (
-              <g key={idx}>
-                <line
-                  x1={pL}
-                  y1={yPos}
-                  x2={canvasWidth - pR}
-                  y2={yPos}
-                  stroke={idx === yTicks.length - 1 ? "#CBD5E1" : "#F1F5F9"}
-                  strokeDasharray={idx === yTicks.length - 1 ? undefined : "4 4"}
-                  strokeWidth={1}
-                />
-                {/* Y-Axis text with 25px explicit space gap from bars */}
-                <text
-                  x={pL - 25}
-                  y={yPos + 4}
-                  textAnchor="end"
-                  className="text-[10px] fill-slate-400 font-extrabold"
-                >
-                  {val}
-                </text>
-              </g>
-            );
-          })}
+    <div className="w-full space-y-4 select-none font-sans">
+      {/* Scrollable container for departments if list is long */}
+      <div className="relative pt-2 pb-6 max-h-[520px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+        {/* Subtle vertical dotted gridlines */}
+        <div className="absolute inset-0 left-36 sm:left-48 right-20 flex justify-between pointer-events-none">
+          {ticks.map((t, idx) => (
+            <div key={idx} className="h-full border-r border-dashed border-slate-100 relative">
+              <span className="absolute -bottom-5 -translate-x-1/2 text-[10px] font-bold text-slate-300">
+                {t}
+              </span>
+            </div>
+          ))}
+        </div>
 
-          {/* Vertical Bars & Count Labels */}
-          {data.map((dept, i) => {
-            const xPos = pL + (i / Math.max(1, data.length - 1)) * cw;
-            const barHeight = Math.max(4, (dept.count / maxVal) * ch);
-            const yPos = pT + ch - barHeight;
-            const isHovered = hoveredIdx === i;
+        {/* Horizontal Bars List */}
+        <div className="space-y-3.5 relative z-10">
+          {sortedData.map((dept, idx) => {
+            const barWidthPct = Math.max(4, (dept.count / maxVal) * 100);
+            const color = DEPT_COLORS[idx % DEPT_COLORS.length] ?? "#2563EB";
+            const isHovered = hoveredIdx === idx;
 
             return (
-              <g key={dept.key} onMouseEnter={() => setHoveredIdx(i)} onMouseLeave={() => setHoveredIdx(null)}>
-                {/* Count number displayed above each vertical bar with space gap */}
-                {dept.count > 0 && (
-                  <text
-                    x={xPos}
-                    y={yPos - 8}
-                    textAnchor="middle"
-                    className={`font-extrabold text-[10px] transition-colors ${
-                      isHovered ? "fill-red-600 font-black text-xs" : "fill-slate-700"
+              <div
+                key={dept.key}
+                className="flex items-center gap-3 group cursor-default"
+                onMouseEnter={() => setHoveredIdx(idx)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              >
+                {/* Department Name Label on Left */}
+                <div className="w-36 sm:w-48 text-right truncate flex-shrink-0">
+                  <span
+                    className={`text-xs font-bold transition-colors block truncate ${
+                      isHovered ? "text-slate-950 font-black" : "text-slate-700"
                     }`}
+                    title={dept.key}
                   >
-                    {dept.count}
-                  </text>
-                )}
+                    {dept.key}
+                  </span>
+                </div>
 
-                {/* Vertical Bar Rect with Red Gradient */}
-                <rect
-                  x={xPos - barWidth / 2}
-                  y={yPos}
-                  width={barWidth}
-                  height={barHeight}
-                  rx={4}
-                  fill={isHovered ? "#DC2626" : "url(#deptRedBarGradient)"}
-                  className="transition-all duration-200 cursor-pointer hover:opacity-90 shadow-sm"
-                />
+                {/* Horizontal Bar Container */}
+                <div className="flex-1 flex items-center pr-2">
+                  <div className="w-full bg-slate-50 h-5 rounded-full relative flex items-center overflow-visible">
+                    {/* Colored Rounded Pill Bar */}
+                    <div
+                      className="h-5 rounded-full transition-all duration-500 ease-out shadow-xs flex items-center justify-end"
+                      style={{
+                        width: `${barWidthPct}%`,
+                        backgroundColor: color,
+                        opacity: isHovered ? 1 : 0.92,
+                        transform: isHovered ? "scaleY(1.04)" : "scaleY(1)",
+                        transformOrigin: "center",
+                      }}
+                    />
 
-                {/* Invisible hover area */}
-                <rect
-                  x={xPos - barWidth * 0.9}
-                  y={pT}
-                  width={barWidth * 1.8}
-                  height={ch + pB}
-                  fill="transparent"
-                  className="cursor-pointer"
-                />
-
-                {/* Department Label rotated -45 deg with 22px baseline gap */}
-                <text
-                  x={xPos}
-                  y={pT + ch + 22}
-                  textAnchor="end"
-                  transform={`rotate(-45, ${xPos}, ${pT + ch + 22})`}
-                  className={`text-[10px] font-bold tracking-tight transition-colors ${
-                    isHovered ? "fill-red-600 font-extrabold" : "fill-slate-600"
-                  }`}
-                >
-                  {dept.key}
-                </text>
-              </g>
+                    {/* Count Text directly at the end/tip of the bar */}
+                    <span className="ml-2.5 text-xs font-black text-slate-800 whitespace-nowrap drop-shadow-xs flex-shrink-0">
+                      {dept.count} count
+                    </span>
+                  </div>
+                </div>
+              </div>
             );
           })}
-
-          <defs>
-            <linearGradient id="deptRedBarGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#EF4444" />
-              <stop offset="100%" stopColor="#B91C1C" />
-            </linearGradient>
-          </defs>
-        </svg>
-
-        {/* Hover Tooltip Card */}
-        {hoveredIdx !== null && data[hoveredIdx] && (
-          <div
-            className="absolute bg-slate-900 text-white rounded-lg px-3 py-1.5 shadow-xl text-xs z-20 border border-slate-800 pointer-events-none transition-all"
-            style={{
-              left: `${Math.min(
-                85,
-                Math.max(5, (hoveredIdx / Math.max(1, data.length - 1)) * 90)
-              )}%`,
-              top: "10px",
-            }}
-          >
-            <p className="font-bold text-[11px] text-red-300">{data[hoveredIdx].key}</p>
-            <p className="font-extrabold text-white text-xs mt-0.5">
-              {data[hoveredIdx].count} Tickets
-            </p>
-          </div>
-        )}
+        </div>
       </div>
-      <p className="text-[10px] text-slate-400 font-medium text-right pr-2 italic">
-        Scroll sideways ↔ to view all departments
-      </p>
+
+      {/* Footer statistics footnote */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+        <p className="font-medium">
+          {total} total tickets across {sortedData.length} departments.
+        </p>
+        <p className="italic text-slate-400">
+          Ranked by highest ticket volume
+        </p>
+      </div>
     </div>
   );
 }
-
