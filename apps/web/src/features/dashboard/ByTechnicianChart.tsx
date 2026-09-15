@@ -5,11 +5,11 @@ import type { CountPoint } from "@11ftc/shared";
 
 // 10 distinct, high-contrast vibrant colors (Deep Navy #1E3A8A and Amber #D97706 first)
 const TECH_COLORS = [
-  "#1E3A8A", // Deep Navy
-  "#D97706", // Amber / Warm Gold
-  "#2563EB", // Royal Blue
-  "#8B5CF6", // Purple / Violet
-  "#059669", // Emerald Green
+  "#1E3A8A", // Deep Navy (Kim)
+  "#D97706", // Amber / Warm Gold (Patrick)
+  "#2563EB", // Royal Blue (Paul)
+  "#8B5CF6", // Purple / Violet (Philip)
+  "#059669", // Emerald Green (IT Team)
   "#E11D48", // Vivid Crimson / Rose
   "#0891B2", // Bright Ocean Cyan
   "#EA580C", // Vivid Tangerine
@@ -19,11 +19,12 @@ const TECH_COLORS = [
 
 /**
  * FR-19 — By Technician (Vertical Box Bar Graph)
- * - Flat box bars with NO curve (rounded-none).
- * - Perfectly centered across the container.
- * - Increased height (h-80 / 320px) to balance symmetrically with Main Issue Categories.
- * - Count label directly above each box (e.g. "233 count").
- * - Horizontal scrolling for additional future IT interns.
+ * - Fixed Y-Axis max at 300 (steps: 300, 225, 150, 75, 0).
+ * - Kim (233) accurately hits 77.6% of the 300 height, leaving ample clearance for count labels.
+ * - Flat box bars with NO curves (rounded-none).
+ * - Moved downwards slightly with top padding to maximize vertical space.
+ * - Symmetrically centered: Kim, Patrick, Paul, Philip & IT are all 100% visible with no edge clipping.
+ * - Horizontally scrollable if more interns join in the future.
  */
 export default function ByTechnicianChart({
   data = [],
@@ -44,24 +45,21 @@ export default function ByTechnicianChart({
 
   // Sort descending by ticket count
   const sortedData = [...data].sort((a, b) => b.count - a.count);
-  const maxVal = Math.max(1, ...sortedData.map((d) => d.count));
   const total = sortedData.reduce((sum, d) => sum + d.count, 0);
 
-  // 5 horizontal grid steps (0, 25%, 50%, 75%, 100%)
-  const yTicks = [
-    maxVal,
-    Math.round(maxVal * 0.75),
-    Math.round(maxVal * 0.5),
-    Math.round(maxVal * 0.25),
-    0,
-  ];
+  // Highest on graph set to 300 as instructed, with 4 equal intervals of 75
+  const maxVal = Math.max(300, ...sortedData.map((d) => d.count));
+  const yTicks = [300, 225, 150, 75, 0];
+
+  // If 5 or fewer technicians, evenly space them across the full width so Kim & all techs are never clipped
+  const isScrollable = sortedData.length > 5;
 
   return (
-    <div className="w-full flex flex-col justify-between select-none font-sans space-y-4 pt-1">
-      {/* Main Chart Section: Fixed Left Y-Axis + Centered Horizontally Scrollable Bar Viewport */}
-      <div className="relative flex items-stretch pt-2">
+    <div className="w-full flex flex-col justify-between select-none font-sans space-y-3 pt-3">
+      {/* Main Chart Section: Moved downwards with pt-4 / pt-6 */}
+      <div className="relative flex items-stretch pt-6 pb-2">
         {/* Left Fixed Y-Axis Labels */}
-        <div className="flex flex-col justify-between items-end pr-3 select-none flex-shrink-0 h-72 sm:h-80 pb-7">
+        <div className="flex flex-col justify-between items-end pr-3 select-none flex-shrink-0 h-64 sm:h-72 pb-6">
           {yTicks.map((val, idx) => (
             <span key={idx} className="text-[11px] font-bold text-slate-400 leading-none">
               {val}
@@ -69,10 +67,16 @@ export default function ByTechnicianChart({
           ))}
         </div>
 
-        {/* Scrollable / Centered Bar Graph Viewport */}
-        <div className="relative flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+        {/* Bar Graph Viewport */}
+        <div
+          className={`relative flex-1 ${
+            isScrollable
+              ? "overflow-x-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent"
+              : "overflow-visible"
+          }`}
+        >
           {/* Horizontal Background Dashed Guidelines */}
-          <div className="absolute inset-0 right-0 left-0 flex flex-col justify-between pointer-events-none h-72 sm:h-80 pb-7">
+          <div className="absolute inset-0 right-0 left-0 flex flex-col justify-between pointer-events-none h-64 sm:h-72 pb-6">
             {yTicks.map((_, idx) => (
               <div
                 key={idx}
@@ -81,24 +85,30 @@ export default function ByTechnicianChart({
             ))}
           </div>
 
-          {/* Vertical Box Bars (Centered when few, scrollable when many) */}
-          <div className="relative z-10 flex items-end justify-center min-w-full gap-8 sm:gap-12 px-4 h-72 sm:h-80 pb-7">
+          {/* Vertical Box Bars */}
+          <div
+            className={`relative z-10 flex items-end h-64 sm:h-72 pb-6 ${
+              isScrollable
+                ? "justify-start gap-6 px-4 min-w-max"
+                : "justify-around sm:justify-evenly w-full px-2"
+            }`}
+          >
             {sortedData.map((tech, idx) => {
-              // Scale up to 88% of vertical space so count label has ample clearance at the top
-              const barHeightPct = Math.max(6, (tech.count / maxVal) * 88);
+              // Exact mathematical scale against maxVal (300)
+              const barHeightPct = Math.min(100, Math.max(4, (tech.count / maxVal) * 100));
               const color = TECH_COLORS[idx % TECH_COLORS.length] ?? "#1E3A8A";
               const isHovered = hoveredIdx === idx;
 
               return (
                 <div
                   key={tech.key}
-                  className="flex flex-col items-center justify-end h-full min-w-[68px] sm:min-w-[80px] group cursor-default relative"
+                  className="flex flex-col items-center justify-end h-full min-w-[54px] sm:min-w-[66px] group cursor-default relative"
                   onMouseEnter={() => setHoveredIdx(idx)}
                   onMouseLeave={() => setHoveredIdx(null)}
                 >
                   {/* Count Text Above Bar (e.g. "233 count") */}
                   <span
-                    className={`text-xs font-black text-slate-800 transition-all duration-200 mb-2 whitespace-nowrap drop-shadow-xs ${
+                    className={`text-xs font-black text-slate-800 transition-all duration-200 mb-1.5 whitespace-nowrap drop-shadow-xs ${
                       isHovered ? "scale-110 text-slate-950 font-black" : ""
                     }`}
                   >
@@ -106,7 +116,7 @@ export default function ByTechnicianChart({
                   </span>
 
                   {/* Vertical Flat Box Bar (No end curve / rounded-none) */}
-                  <div className="w-14 sm:w-16 flex items-end justify-center h-full">
+                  <div className="w-12 sm:w-14 flex items-end justify-center h-full">
                     <div
                       className="w-full rounded-none transition-all duration-500 ease-out shadow-xs"
                       style={{
@@ -143,7 +153,7 @@ export default function ByTechnicianChart({
           {total} total assignments across {sortedData.length}{" "}
           {sortedData.length === 1 ? "technician" : "technicians"}.
         </p>
-        {sortedData.length > 5 && (
+        {isScrollable && (
           <p className="italic text-slate-400 text-right">
             Scroll sideways ↔ for all technicians / interns
           </p>

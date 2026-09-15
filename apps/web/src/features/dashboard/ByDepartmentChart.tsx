@@ -25,12 +25,10 @@ const DEPT_COLORS = [
 
 /**
  * FR-18 — Ticket Volume By Department (Horizontal Bar Graph)
- * Styled like the horizontal reference graph (Picture 3):
- * - Department name on the left.
- * - Horizontal rounded pill bars with solid, distinct colors per department.
- * - Exact count displayed directly at the tip/end of each bar (e.g. "10 count").
- * - Subtle vertical dotted guidelines and tick scale along the bottom.
- * - Displays all departments accurately sorted by volume.
+ * - Horizontally centered inside the card (max-w-4xl mx-auto).
+ * - Left spacing tightened (w-24 sm:w-32) to remove excessive left whitespace.
+ * - Ample right clearance so count text and pill edges are 100% visible and never clipped.
+ * - Distinct, solid colors for every department.
  */
 export default function ByDepartmentChart({
   data = [],
@@ -47,7 +45,7 @@ export default function ByDepartmentChart({
     );
   }
 
-  // Sort descending by ticket count to match the ranking design
+  // Sort descending by ticket count
   const sortedData = [...data].sort((a, b) => b.count - a.count);
   const maxVal = Math.max(1, ...sortedData.map((d) => d.count));
   const total = sortedData.reduce((sum, d) => sum + d.count, 0);
@@ -62,11 +60,11 @@ export default function ByDepartmentChart({
   ];
 
   return (
-    <div className="w-full space-y-4 select-none font-sans">
-      {/* Scrollable container for departments if list is long */}
-      <div className="relative pt-2 pb-6 max-h-[520px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
-        {/* Subtle vertical dotted gridlines */}
-        <div className="absolute inset-0 left-36 sm:left-48 right-20 flex justify-between pointer-events-none">
+    <div className="w-full max-w-4xl mx-auto space-y-4 select-none font-sans px-2">
+      {/* Scrollable list for departments if list is long */}
+      <div className="relative pt-2 pb-6 max-h-[520px] overflow-y-auto pr-3 scrollbar-thin scrollbar-thumb-slate-200">
+        {/* Subtle vertical dotted gridlines shifted closer to the left */}
+        <div className="absolute inset-0 left-24 sm:left-32 right-16 flex justify-between pointer-events-none">
           {ticks.map((t, idx) => (
             <div key={idx} className="h-full border-r border-dashed border-slate-100 relative">
               <span className="absolute -bottom-5 -translate-x-1/2 text-[10px] font-bold text-slate-300">
@@ -90,8 +88,8 @@ export default function ByDepartmentChart({
                 onMouseEnter={() => setHoveredIdx(idx)}
                 onMouseLeave={() => setHoveredIdx(null)}
               >
-                {/* Department Name Label on Left */}
-                <div className="w-36 sm:w-48 text-right truncate flex-shrink-0">
+                {/* Department Name Label (Tightened width to eliminate left void) */}
+                <div className="w-24 sm:w-32 text-right truncate flex-shrink-0">
                   <span
                     className={`text-xs font-bold transition-colors block truncate ${
                       isHovered ? "text-slate-950 font-black" : "text-slate-700"
@@ -102,8 +100,8 @@ export default function ByDepartmentChart({
                   </span>
                 </div>
 
-                {/* Horizontal Bar Container */}
-                <div className="flex-1 flex items-center pr-2">
+                {/* Horizontal Bar Container with ample right padding to avoid clipping */}
+                <div className="flex-1 flex items-center pr-4 sm:pr-8">
                   <div className="w-full bg-slate-50 h-5 rounded-full relative flex items-center overflow-visible">
                     {/* Colored Rounded Pill Bar */}
                     <div
@@ -117,7 +115,7 @@ export default function ByDepartmentChart({
                       }}
                     />
 
-                    {/* Count Text directly at the end/tip of the bar */}
+                    {/* Count Text directly at the end of the bar */}
                     <span className="ml-2.5 text-xs font-black text-slate-800 whitespace-nowrap drop-shadow-xs flex-shrink-0">
                       {dept.count} count
                     </span>
