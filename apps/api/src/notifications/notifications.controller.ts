@@ -13,10 +13,15 @@ export interface NotificationItem {
 
 export interface TicketNotificationItem {
   id: string;
+  ticketNo: string;
   title: string;
   status: "OPEN" | "ONGOING" | "CLOSED";
   desc: string;
   time: string;
+  department?: string;
+  concern?: string;
+  createdById?: string;
+  creatorName?: string;
 }
 
 export interface NotificationsResponse {
@@ -125,29 +130,57 @@ export class NotificationsController {
       }
     }
 
-    // 2. Fetch active ongoing tickets for the Tickets notification tab
-    const ongoing = await this.db
+    // 2. Fetch recent ticket encodings (created/closed/ongoing)
+    const recentTickets = await this.db
       .select({
         ticketId: schema.tickets.ticketId,
         ticketNo: schema.tickets.ticketNo,
         concern: schema.tickets.concern,
         status: schema.tickets.status,
+        createdAt: schema.tickets.createdAt,
         ongoingAt: schema.tickets.ongoingAt,
+        createdById: schema.tickets.createdBy,
+        creatorName: schema.users.fullName,
+        departmentName: schema.departments.name,
       })
       .from(schema.tickets)
-      .where(eq(schema.tickets.status, "Ongoing"))
+      .leftJoin(schema.users, eq(schema.tickets.createdBy, schema.users.userId))
+      .leftJoin(schema.employees, eq(schema.tickets.employeeId, schema.employees.employeeId))
+      .leftJoin(schema.departments, eq(schema.employees.departmentId, schema.departments.departmentId))
       .orderBy(desc(schema.tickets.createdAt))
-      .limit(6);
+      .limit(8);
 
-    const tickets: TicketNotificationItem[] = ongoing.map((t) => ({
-      id: t.ticketId,
-      title: t.ticketNo,
-      status: "ONGOING",
-      desc: t.concern,
-      time: t.ongoingAt
-        ? `Since ${new Date(t.ongoingAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-        : "Ongoing",
-    }));
+    const tickets: TicketNotificationItem[] = recentTickets.map((t) => {
+      const isClosed = t.status === "Closed";
+      const isOngoing = t.status === "Ongoing";
+      const statusUpper: "OPEN" | "ONGOING" | "CLOSED" = isClosed
+        ? "CLOSED"
+        : isOngoing
+        ? "ONGOING"
+        : "OPEN";
+
+      const timeStr = t.createdAt
+        ? new Date(t.createdAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "Recent";
+
+      return {
+        id: t.ticketId,
+        ticketNo: t.ticketNo,
+        title: t.ticketNo,
+        status: statusUpper,
+        desc: t.concern,
+        time: timeStr,
+        department: t.departmentName ?? "General",
+        concern: t.concern,
+        createdById: t.createdById,
+        creatorName: t.creatorName ?? "Technician",
+      };
+    });
 
     return { activities, tickets };
   }

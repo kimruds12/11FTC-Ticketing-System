@@ -159,7 +159,6 @@ export class UsersService {
 
       if (actor) {
         await this.db.insert(schema.auditLog).values({
-          ticketId: null,
           action: "CREATE",
           fieldName: "Account",
           previousValue: null,
@@ -259,7 +258,6 @@ export class UsersService {
       this.logger.log(`deactivated user ${row.email}`);
       if (actor) {
         await this.db.insert(schema.auditLog).values({
-          ticketId: null,
           action: "RESIGN",
           fieldName: "Account",
           previousValue: `${row.email} (Active)`,

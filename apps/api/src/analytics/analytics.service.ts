@@ -81,6 +81,24 @@ export class AnalyticsService {
     return rows.map((r) => ({ date: r.date, count: r.count }));
   }
 
+  /** Trend analytics with accurate daily Done (Closed) and Ongoing ticket counts */
+  async trend(): Promise<{ date: string; closed: number; ongoing: number }[]> {
+    const rows = await this.db
+      .select({
+        date: sql<string>`to_char(${schema.tickets.date}, 'YYYY-MM-DD')`,
+        closed: sql<number>`count(*) filter (where ${schema.tickets.status} = 'Closed')::int`,
+        ongoing: sql<number>`count(*) filter (where ${schema.tickets.status} = 'Ongoing')::int`,
+      })
+      .from(schema.tickets)
+      .groupBy(sql`to_char(${schema.tickets.date}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${schema.tickets.date}, 'YYYY-MM-DD')`);
+    return rows.map((r) => ({
+      date: r.date,
+      closed: r.closed ?? 0,
+      ongoing: r.ongoing ?? 0,
+    }));
+  }
+
   /** FR-22 — Open / Ongoing / Closed distribution. */
   async status(): Promise<StatusCounts> {
     const rows = await this.db

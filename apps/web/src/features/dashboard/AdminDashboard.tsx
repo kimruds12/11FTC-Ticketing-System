@@ -27,6 +27,7 @@ interface DashData {
   status: StatusCounts;
   todayCount: number;
   solved: DatePoint[];
+  trend: { date: string; closed: number; ongoing: number }[];
   byDept: CountPoint[];
   byTech: CountPoint[];
   byCat: CountPoint[];
@@ -37,6 +38,7 @@ const EMPTY: DashData = {
   status: { open: 0, ongoing: 0, closed: 0, total: 0 },
   todayCount: 0,
   solved: [],
+  trend: [],
   byDept: [],
   byTech: [],
   byCat: [],
@@ -77,9 +79,10 @@ export default function AdminDashboard() {
       const tSvc = ticketsService(browserApi());
       const w = analyticsWindow;
       const todayStr = new Date().toLocaleDateString("en-CA");
-      const [status, solved, byDept, byTech, byCat, ftf, todayRes] = await Promise.all([
+      const [status, solved, trend, byDept, byTech, byCat, ftf, todayRes] = await Promise.all([
         svc.status(),
         svc.solved(w),
+        svc.trend(),
         svc.byDepartment(w),
         svc.byTechnician(w),
         svc.byCategory(w),
@@ -90,6 +93,7 @@ export default function AdminDashboard() {
         status,
         todayCount: todayRes?.total ?? 0,
         solved,
+        trend,
         byDept,
         byTech,
         byCat,
@@ -262,6 +266,7 @@ export default function AdminDashboard() {
       <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
         <ResolutionTrendChart
           data={data?.solved}
+          trendData={data?.trend}
           granularity={granularity}
           onGranularityChange={setGranularity}
           emptyHint={`No tickets were closed ${windowLabel}.`}

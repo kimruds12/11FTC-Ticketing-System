@@ -88,7 +88,6 @@ export class TechnicianService {
     if (!r) throw new InternalServerErrorException("Failed to create technician");
     if (actor) {
       await this.db.insert(schema.auditLog).values({
-        ticketId: null,
         action: "CREATE",
         fieldName: "Technician",
         previousValue: null,

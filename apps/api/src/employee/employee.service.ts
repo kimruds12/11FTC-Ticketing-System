@@ -152,7 +152,6 @@ export class EmployeeService {
     if (actor) {
       if (dto.isActive === false) {
         await this.db.insert(schema.auditLog).values({
-          ticketId: null,
           action: "RESIGN",
           fieldName: "Employee",
           previousValue: `${r.name} (Active)`,
@@ -161,7 +160,6 @@ export class EmployeeService {
         });
       } else if (dto.name || dto.departmentId) {
         await this.db.insert(schema.auditLog).values({
-          ticketId: null,
           action: "UPDATE",
           fieldName: "Employee",
           previousValue: null,

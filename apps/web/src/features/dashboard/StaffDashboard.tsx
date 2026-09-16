@@ -29,6 +29,7 @@ interface DashData {
   status: StatusCounts;
   todayCount: number;
   solved: DatePoint[];
+  trend: { date: string; closed: number; ongoing: number }[];
   byDept: CountPoint[];
   byTech: CountPoint[];
   byCat: CountPoint[];
@@ -40,6 +41,7 @@ const EMPTY: DashData = {
   status: { open: 0, ongoing: 0, closed: 0, total: 0 },
   todayCount: 0,
   solved: [],
+  trend: [],
   byDept: [],
   byTech: [],
   byCat: [],
@@ -79,9 +81,10 @@ export default function StaffDashboard() {
       const tSvc = ticketsService(browserApi());
       const w = analyticsWindow;
       const todayStr = new Date().toLocaleDateString("en-CA");
-      const [status, solved, byDept, byTech, byCat, ftf, ageing, todayRes] = await Promise.all([
+      const [status, solved, trend, byDept, byTech, byCat, ftf, ageing, todayRes] = await Promise.all([
         svc.status(),
         svc.solved(w),
+        svc.trend(),
         svc.byDepartment(w),
         svc.byTechnician(w),
         svc.byCategory(w),
@@ -93,6 +96,7 @@ export default function StaffDashboard() {
         status,
         todayCount: todayRes?.total ?? 0,
         solved,
+        trend,
         byDept,
         byTech,
         byCat,
@@ -305,7 +309,7 @@ export default function StaffDashboard() {
           </div>
 
           <div className="flex-1 flex flex-col justify-between">
-            <div className="space-y-3 max-h-[310px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-[390px] overflow-y-auto pr-1">
               {!data ? (
                 <p className="text-xs text-gray-400 font-medium py-10 text-center">Loading queue…</p>
               ) : data.ageing.length === 0 ? (
@@ -320,19 +324,19 @@ export default function StaffDashboard() {
                 data.ageing.map((tkt) => (
                   <div
                     key={tkt.ticketId}
-                    className="p-3.5 bg-white hover:bg-slate-50/90 rounded-xl border border-gray-200 shadow-xs hover:border-primary-300 transition-all group"
+                    className="p-2.5 px-3.5 bg-white hover:bg-slate-50/90 rounded-xl border border-gray-200 shadow-xs hover:border-primary-300 transition-all group"
                   >
                     <div className="flex justify-between items-center gap-3">
                       <div className="flex items-center gap-2">
                         <Link
                           href={`/tickets/${tkt.ticketId}?from=dashboard`}
-                          className="text-xs font-bold text-primary-700 bg-primary-50 px-2.5 py-1 rounded-md border border-primary-200 group-hover:bg-primary-100 transition-colors"
+                          className="text-xs font-bold text-primary-700 bg-primary-50 px-2 py-0.5 rounded-md border border-primary-200 group-hover:bg-primary-100 transition-colors"
                         >
                           {tkt.ticketNo}
                         </Link>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 font-extrabold uppercase px-2.5 py-0.5 rounded-full tracking-wider">
+                        <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider">
                           {tkt.ageDays} {tkt.ageDays === 1 ? "DAY" : "DAYS"}
                         </span>
                         <Link
@@ -343,7 +347,7 @@ export default function StaffDashboard() {
                         </Link>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-slate-500 font-medium mt-2 pt-1.5 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-xs text-slate-500 font-medium mt-1.5 pt-1 border-t border-slate-100">
                       <span>
                         Ongoing since <span className="font-bold text-slate-700">{tkt.ongoingAt.slice(0, 10)}</span>
                       </span>
@@ -360,16 +364,18 @@ export default function StaffDashboard() {
             </div>
 
             {data && data.ageing.length > 0 && (
-              <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-500">
-                  Select any ticket to view details, re-assign, or edit remarks.
-                </span>
-                <Link
-                  href="/tickets"
-                  className="text-xs font-bold text-primary-700 hover:text-primary-800 hover:underline whitespace-nowrap ml-2"
-                >
-                  View All &rarr;
-                </Link>
+              <div className="mt-5 pt-3 border-t border-slate-100">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    Select any ticket to view details, re-assign, or edit remarks.
+                  </span>
+                  <Link
+                    href="/tickets"
+                    className="text-xs font-bold text-primary-700 hover:text-primary-800 hover:underline whitespace-nowrap ml-2"
+                  >
+                    View All &rarr;
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -403,6 +409,7 @@ export default function StaffDashboard() {
       <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
         <ResolutionTrendChart
           data={data?.solved}
+          trendData={data?.trend}
           granularity={granularity}
           onGranularityChange={setGranularity}
           emptyHint={`No tickets were closed ${windowLabel}.`}

@@ -40,6 +40,11 @@ export class AnalyticsController {
     return this.analytics.solved(w);
   }
 
+  @Get("trend")
+  trend(): Promise<{ date: string; closed: number; ongoing: number }[]> {
+    return this.analytics.trend();
+  }
+
   @Get("status")
   status(): Promise<StatusCounts> {
     return this.analytics.status();

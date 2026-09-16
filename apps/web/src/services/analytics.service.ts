@@ -31,6 +31,9 @@ export const analyticsService = (api: AxiosInstance) => {
     async solved(w: Partial<AnalyticsWindow> = {}): Promise<DatePoint[]> {
       return (await api.get<DatePoint[]>("/analytics/solved", p(w))).data;
     },
+    async trend(): Promise<{ date: string; closed: number; ongoing: number }[]> {
+      return (await api.get<{ date: string; closed: number; ongoing: number }[]>("/analytics/trend")).data;
+    },
     async byDepartment(w: Partial<AnalyticsWindow> = {}): Promise<CountPoint[]> {
       return (await api.get<CountPoint[]>("/analytics/by-department", p(w))).data;
     },

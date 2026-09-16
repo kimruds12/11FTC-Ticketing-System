@@ -1,10 +1,19 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { DatePoint, Granularity } from "@11ftc/shared";
+import { browserApi } from "@/services/browser";
+import { analyticsService } from "@/services/analytics.service";
+
+interface TrendPoint {
+  date: string;
+  closed: number;
+  ongoing: number;
+}
 
 interface ResolutionTrendChartProps {
   data?: DatePoint[];
+  trendData?: TrendPoint[];
   granularity?: Granularity | "year";
   onGranularityChange?: (g: Granularity) => void;
   emptyHint?: string;
@@ -39,6 +48,7 @@ function getBezierPath(points: { x: number; y: number }[]): string {
 
 export default function ResolutionTrendChart({
   data = [],
+  trendData,
   granularity: externalGranularity = "month",
   onGranularityChange,
   emptyHint,
@@ -47,8 +57,39 @@ export default function ResolutionTrendChart({
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [selectedMonth, setSelectedMonth] = useState<number>(8); // September (0-indexed 8)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [fetchedTrend, setFetchedTrend] = useState<TrendPoint[] | null>(null);
 
-  // Active view frequency
+  // Self-hydrate trend data if not provided by parent
+  useEffect(() => {
+    let active = true;
+    if (!trendData || trendData.length === 0) {
+      void analyticsService(browserApi())
+        .trend()
+        .then((res) => {
+          if (active && res) {
+            setFetchedTrend(res);
+          }
+        })
+        .catch(() => {
+          // quiet fallback
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [trendData]);
+
+  const activeTrend = useMemo<TrendPoint[]>(() => {
+    if (trendData && trendData.length > 0) return trendData;
+    if (fetchedTrend && fetchedTrend.length > 0) return fetchedTrend;
+    // Fallback convert legacy DatePoint data if needed
+    return data.map((d) => ({
+      date: d.date,
+      closed: d.count,
+      ongoing: 0,
+    }));
+  }, [trendData, fetchedTrend, data]);
+
   const activeGranularity = internalGranularity;
 
   const handleGranularityClick = (g: "day" | "week" | "month" | "year") => {
@@ -57,7 +98,6 @@ export default function ResolutionTrendChart({
       if (g === "day" || g === "week" || g === "month") {
         onGranularityChange(g);
       } else if (g === "year") {
-        // Fetch month granularity from API for yearly grouping, do not send 'year' to API
         onGranularityChange("month");
       }
     }
@@ -69,85 +109,101 @@ export default function ResolutionTrendChart({
   ];
   const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-  // Prepare data based on view & real backend data points
+  // Prepare chart points based on active frequency and true backend dataset
   const chartPoints = useMemo(() => {
+    // 1. YEARLY VIEW
     if (activeGranularity === "year") {
-      const years = [2022, 2023, 2024, 2025, 2026];
+      // If user selected 2025 in dropdown, show years ending at 2025 with 0 tickets
+      const years = selectedYear === 2025 ? [2021, 2022, 2023, 2024, 2025] : [2022, 2023, 2024, 2025, 2026];
       return years.map((y) => {
-        const match = data
-          .filter((d) => d.date.startsWith(String(y)))
-          .reduce((acc, curr) => acc + curr.count, 0);
-        // Fallback to real ticket totals if match exists or default curve
-        const count = match > 0 ? match : y === 2026 ? (data.reduce((a, b) => a + b.count, 0) || 213) : y === 2025 ? 2 : 0;
-        const ongoing = Math.max(0, Math.round(count * 0.12));
+        const matchingYear = activeTrend.filter((t) => t.date.startsWith(`${y}-`));
+        const closedSum = matchingYear.reduce((acc, curr) => acc + curr.closed, 0);
+        const ongoingSum = matchingYear.reduce((acc, curr) => acc + curr.ongoing, 0);
+
         return {
           label: `${y}`,
           fullDate: `${y}`,
-          done: count,
-          ongoing,
+          done: closedSum,
+          ongoing: ongoingSum,
         };
       });
     }
 
+    // 2. MONTHLY VIEW (Jan-Dec for selectedYear)
     if (activeGranularity === "month") {
       return shortMonths.map((m, idx) => {
-        const monthNum = String(idx + 1).padStart(2, "0");
-        const match = data
-          .filter((d) => d.date.startsWith(`${selectedYear}-${monthNum}`))
-          .reduce((acc, curr) => acc + curr.count, 0);
-        const count = match;
-        const ongoing = Math.max(0, Math.round(count * 0.15));
+        const monthPrefix = `${selectedYear}-${String(idx + 1).padStart(2, "0")}`;
+        const matchingMonth = activeTrend.filter((t) => t.date.startsWith(monthPrefix));
+        const closedSum = matchingMonth.reduce((acc, curr) => acc + curr.closed, 0);
+        const ongoingSum = matchingMonth.reduce((acc, curr) => acc + curr.ongoing, 0);
+
         return {
           label: m,
-          fullDate: `${m} ${selectedYear}`,
-          done: count,
-          ongoing,
+          fullDate: `${months[idx]} ${selectedYear}`,
+          done: closedSum,
+          ongoing: ongoingSum,
         };
       });
     }
 
+    // 3. WEEKLY VIEW (4 Weeks for selectedMonth and selectedYear)
     if (activeGranularity === "week") {
-      const monthName = months[selectedMonth] ?? "September";
-      return [1, 2, 3, 4].map((wk) => {
-        const count = wk === 1 ? 12 : wk === 2 ? 28 : wk === 3 ? 15 : 7;
+      const monthPrefix = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}`;
+      const monthRecords = activeTrend.filter((t) => t.date.startsWith(monthPrefix));
+
+      const weekDefs = [
+        { label: "W1", start: 1, end: 7 },
+        { label: "W2", start: 8, end: 14 },
+        { label: "W3", start: 15, end: 21 },
+        { label: "W4", start: 22, end: 31 },
+      ];
+
+      return weekDefs.map((wk) => {
+        const weekRecords = monthRecords.filter((t) => {
+          const day = parseInt(t.date.split("-")[2] || "0", 10);
+          return day >= wk.start && day <= wk.end;
+        });
+
+        const closedSum = weekRecords.reduce((acc, curr) => acc + curr.closed, 0);
+        const ongoingSum = weekRecords.reduce((acc, curr) => acc + curr.ongoing, 0);
+
         return {
-          label: `W${wk} (${shortMonths[selectedMonth] ?? "Sep"})`,
-          fullDate: `${monthName} ${selectedYear} - Week ${wk}`,
-          done: count,
-          ongoing: Math.round(count * 0.2),
+          label: `${wk.label} (${shortMonths[selectedMonth]})`,
+          fullDate: `${months[selectedMonth]} ${selectedYear} - ${wk.label}`,
+          done: closedSum,
+          ongoing: ongoingSum,
         };
       });
     }
 
-    // Daily view (Month and day only, e.g. 09/01)
-    if (data.length > 0 && activeGranularity === "day") {
-      return data.slice(-11).map((d) => {
-        const parts = d.date.split("-");
-        const m = parts[1] ?? "09";
-        const day = parts[2] ?? "01";
-        const formattedDate = `${m}/${day}`;
-        return {
-          label: formattedDate,
-          fullDate: formattedDate,
-          done: d.count,
-          ongoing: Math.max(0, Math.round(d.count * 0.1)),
-        };
+    // 4. DAILY VIEW (All days of the selected month that have tickets or up to current activity)
+    const monthNum = String(selectedMonth + 1).padStart(2, "0");
+    const monthPrefix = `${selectedYear}-${monthNum}`;
+    const monthRecords = activeTrend.filter((t) => t.date.startsWith(monthPrefix));
+
+    // Determine how many days to display for this month
+    const ticketDays = monthRecords.map((t) => parseInt(t.date.split("-")[2] || "1", 10));
+    const maxTicketDay = ticketDays.length > 0 ? Math.max(...ticketDays) : 0;
+
+    // For months with tickets (like Sep 2026 with 16 days), display days 1 to maxTicketDay
+    // For months with no tickets yet, display days 1 to 15 with 0 count
+    const totalDaysToRender = maxTicketDay > 0 ? Math.max(16, maxTicketDay) : 15;
+
+    const points = [];
+    for (let day = 1; day <= totalDaysToRender; day++) {
+      const dayStr = String(day).padStart(2, "0");
+      const fullDateStr = `${monthPrefix}-${dayStr}`;
+      const match = monthRecords.find((t) => t.date === fullDateStr);
+
+      points.push({
+        label: `${monthNum}/${dayStr}`,
+        fullDate: `${months[selectedMonth]} ${day}, ${selectedYear}`,
+        done: match ? match.closed : 0,
+        ongoing: match ? match.ongoing : 0,
       });
     }
-
-    // Fallback daily data (09/01 to 09/11)
-    const days = [
-      "09/01", "09/02", "09/03", "09/04", "09/05",
-      "09/06", "09/07", "09/08", "09/09", "09/10", "09/11"
-    ];
-    const fallbackDaily = [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    return days.map((day, idx) => ({
-      label: day,
-      fullDate: day,
-      done: fallbackDaily[idx] ?? 0,
-      ongoing: 0,
-    }));
-  }, [data, activeGranularity, selectedYear, selectedMonth]);
+    return points;
+  }, [activeTrend, activeGranularity, selectedYear, selectedMonth, months, shortMonths]);
 
   // Chart dimensions & scaling
   const width = 1000;
@@ -159,17 +215,25 @@ export default function ResolutionTrendChart({
   const cw = width - pL - pR;
   const ch = height - pT - pB;
 
-  const maxVal = Math.max(4, ...chartPoints.map((p) => p.done));
+  const maxVal = Math.max(5, ...chartPoints.map((p) => Math.max(p.done, p.ongoing)));
 
-  const coords = chartPoints.map((p, i) => ({
+  const coordsDone = chartPoints.map((p, i) => ({
     x: pL + (chartPoints.length <= 1 ? cw / 2 : (i / (chartPoints.length - 1)) * cw),
     y: pT + ch - (p.done / maxVal) * ch,
     val: p.done,
   }));
 
-  const bezierPathStr = getBezierPath(coords);
-  const firstPt = coords[0];
-  const lastPt = coords[coords.length - 1];
+  const coordsOngoing = chartPoints.map((p, i) => ({
+    x: pL + (chartPoints.length <= 1 ? cw / 2 : (i / (chartPoints.length - 1)) * cw),
+    y: pT + ch - (p.ongoing / maxVal) * ch,
+    val: p.ongoing,
+  }));
+
+  const bezierPathDone = getBezierPath(coordsDone);
+  const bezierPathOngoing = getBezierPath(coordsOngoing);
+
+  const firstPtDone = coordsDone[0];
+  const lastPtDone = coordsDone[coordsDone.length - 1];
 
   // Grid tick values (4 steps)
   const yTicks = [
@@ -177,18 +241,20 @@ export default function ResolutionTrendChart({
     Math.round(maxVal * 0.75),
     Math.round(maxVal * 0.5),
     Math.round(maxVal * 0.25),
-    0
+    0,
   ];
 
-  // Subtitle string matching screenshots
+  // Subtitle string matching requested view
   const subtitleStr =
     activeGranularity === "year"
-      ? "Yearly Comparison"
+      ? selectedYear === 2025
+        ? "Yearly Comparison (2021 - 2025)"
+        : "Yearly Comparison (2022 - 2026)"
       : activeGranularity === "month"
-        ? `${selectedYear}`
-        : activeGranularity === "week"
-          ? `${months[selectedMonth]} ${selectedYear} (4 Weeks)`
-          : `${months[selectedMonth]} ${selectedYear}`;
+      ? `${selectedYear}`
+      : activeGranularity === "week"
+      ? `${months[selectedMonth]} ${selectedYear} (4 Weeks)`
+      : `${months[selectedMonth]} ${selectedYear}`;
 
   return (
     <div className="w-full space-y-4 font-sans">
@@ -215,10 +281,11 @@ export default function ResolutionTrendChart({
                   key={gKey}
                   type="button"
                   onClick={() => handleGranularityClick(gKey)}
-                  className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all duration-150 ${isActive
-                    ? "bg-[#102447] text-white shadow-md"
-                    : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
-                    }`}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all duration-150 ${
+                    isActive
+                      ? "bg-[#102447] text-white shadow-md"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
+                  }`}
                 >
                   {labels[gKey]}
                 </button>
@@ -226,7 +293,7 @@ export default function ResolutionTrendChart({
             })}
           </div>
 
-          {/* Month / Year selector button */}
+          {/* Month / Year selector */}
           {activeGranularity === "month" || activeGranularity === "year" ? (
             <select
               value={selectedYear}
@@ -247,7 +314,7 @@ export default function ResolutionTrendChart({
             >
               {months.map((m, idx) => (
                 <option key={m} value={idx}>
-                  {m} 📅
+                  {m}
                 </option>
               ))}
             </select>
@@ -284,29 +351,64 @@ export default function ResolutionTrendChart({
             );
           })}
 
-          {/* Area Gradient Fill under Bezier Line */}
-          {firstPt && lastPt && (
+          {/* Red Area Gradient Fill under Done Spline */}
+          {firstPtDone && lastPtDone && (
             <path
-              d={`${bezierPathStr} L ${lastPt.x} ${pT + ch} L ${firstPt.x} ${pT + ch} Z`}
-              fill="url(#visitorGradient)"
-              className="opacity-25"
+              d={`${bezierPathDone} L ${lastPtDone.x} ${pT + ch} L ${firstPtDone.x} ${pT + ch} Z`}
+              fill="url(#doneGradient)"
+              className="opacity-20"
             />
           )}
 
-          {/* Smooth Bezier Spline Curve */}
+          {/* Smooth Blue Bezier Spline Curve for Ongoing */}
           <path
-            d={bezierPathStr}
+            d={bezierPathOngoing}
+            fill="none"
+            stroke="#3B82F6"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="transition-all duration-300"
+          />
+
+          {/* Smooth Red Bezier Spline Curve for Done */}
+          <path
+            d={bezierPathDone}
             fill="none"
             stroke="#E5484D"
             strokeWidth={2.5}
             strokeLinecap="round"
             strokeLinejoin="round"
+            className="transition-all duration-300"
           />
 
-          {/* Data Points + Red Count Numbers Above Points */}
-          {coords.map((pt, i) => (
-            <g key={i}>
-              {/* Red number count label above data point */}
+          {/* Blue Ongoing Data Points + Labels */}
+          {coordsOngoing.map((pt, i) => (
+            <g key={`ongoing-${i}`}>
+              {pt.val > 0 && (
+                <text
+                  x={pt.x}
+                  y={pt.y - 8}
+                  textAnchor="middle"
+                  className="fill-blue-600 font-extrabold text-[11px]"
+                >
+                  {pt.val}
+                </text>
+              )}
+              {pt.val > 0 && (
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={3.5}
+                  className="fill-blue-500 stroke-white stroke-2 shadow-sm"
+                />
+              )}
+            </g>
+          ))}
+
+          {/* Red Done Data Points + Labels */}
+          {coordsDone.map((pt, i) => (
+            <g key={`done-${i}`}>
               {pt.val > 0 && (
                 <text
                   x={pt.x}
@@ -317,8 +419,6 @@ export default function ResolutionTrendChart({
                   {pt.val}
                 </text>
               )}
-
-              {/* Data Point Node Dot */}
               <circle
                 cx={pt.x}
                 cy={pt.y}
@@ -326,7 +426,7 @@ export default function ResolutionTrendChart({
                 className="fill-red-500 stroke-white stroke-2 shadow-sm"
               />
 
-              {/* Interactive Hover / Drag Target */}
+              {/* Interactive Hover Target */}
               <circle
                 cx={pt.x}
                 cy={pt.y}
@@ -338,9 +438,9 @@ export default function ResolutionTrendChart({
             </g>
           ))}
 
-          {/* X-Axis Labels (Straight horizontal letters, no slant) */}
+          {/* X-Axis Labels (Straight horizontal letters, formatted MM/DD) */}
           {chartPoints.map((pt, i) => {
-            const xPos = coords[i]?.x ?? pL;
+            const xPos = coordsDone[i]?.x ?? pL;
             const yPos = pT + ch + 16;
             return (
               <text
@@ -356,8 +456,12 @@ export default function ResolutionTrendChart({
           })}
 
           <defs>
-            <linearGradient id="visitorGradient" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="doneGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#E5484D" />
+              <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="ongoingGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3B82F6" />
               <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
             </linearGradient>
           </defs>
@@ -412,4 +516,3 @@ export default function ResolutionTrendChart({
     </div>
   );
 }
-

@@ -58,10 +58,15 @@ interface ActivityNotification {
 
 interface TicketNotification {
   id: string;
+  ticketNo: string;
   title: string;
   status: "OPEN" | "ONGOING" | "CLOSED";
   desc: string;
   time: string;
+  department?: string;
+  concern?: string;
+  createdById?: string;
+  creatorName?: string;
 }
 
 interface HeaderProps {
@@ -77,6 +82,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   const role = useAppSelector((state) => state.auth.role);
   const fullName = useAppSelector((state) => state.auth.fullName);
   const email = useAppSelector((state) => state.auth.email);
+  const currentUserId = useAppSelector((state) => state.auth.userId);
   const isDashboard = pathname === "/dashboard";
   const meta = routeMeta[pathname] ?? { breadcrumb: ["11FTC"], title: "FTraCe" };
 
@@ -152,7 +158,7 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
       try {
         const res = await browserApi().get<{
           activities: { id: string; title: string; desc: string; time: string; tag: string }[];
-          tickets: { id: string; title: string; status: "OPEN" | "ONGOING" | "CLOSED"; desc: string; time: string }[];
+          tickets: TicketNotification[];
         }>("/notifications");
         if (active && res.data) {
           const actList: ActivityNotification[] = (res.data.activities ?? []).map((a) => ({
@@ -319,16 +325,16 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
               </div>
 
               {/* Scrollable list */}
-              <div className="flex-1 overflow-y-auto divide-y divide-gray-100 flex flex-col justify-center min-h-[160px]">
+              <div className="flex-1 overflow-y-auto divide-y divide-gray-100 flex flex-col justify-start min-h-[160px]">
                 {activeNotifTab === "activity" ? (
                   recentActivities.length > 0 ? (
                     recentActivities.map((act) => (
-                      <div key={act.id} className="p-4 hover:bg-gray-50/50 transition-colors flex gap-3 items-start cursor-pointer">
+                      <div key={act.id} className="p-3.5 hover:bg-gray-50/75 transition-colors flex gap-3 items-start cursor-pointer">
                         <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0 border border-gray-100">
                           {act.icon}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-gray-900 leading-tight">{act.title}</p>
+                          <p className="text-xs font-bold text-gray-900 leading-snug">{act.title}</p>
                           <p className="text-xs text-gray-500 font-medium mt-1 leading-relaxed">{act.desc}</p>
                           <div className="flex items-center gap-2 mt-2">
                             <span className="text-[10px] text-gray-400 font-semibold uppercase">{act.time}</span>
@@ -349,31 +355,68 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
                   )
                 ) : (
                   recentTickets.length > 0 ? (
-                    recentTickets.map((tkt) => (
-                      <div key={tkt.id} className="p-4 hover:bg-gray-50/50 transition-colors flex gap-3 items-start cursor-pointer" onClick={() => { router.push(`/tickets/${tkt.id}`); setShowNotificationDropdown(false); }}>
-                        <div className="w-8 h-8 rounded-lg bg-red-50 text-primary-700 flex items-center justify-center flex-shrink-0 border border-red-100 font-bold text-xs">
-                          T
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start gap-2">
-                            <p className="text-sm font-bold text-gray-900 leading-tight truncate">{tkt.title}</p>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
-                              tkt.status === "OPEN" ? "bg-red-50 text-red-700 border-red-200" :
-                              tkt.status === "ONGOING" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                              "bg-green-50 text-green-700 border-green-200"
-                            }`}>
-                              {tkt.status}
-                            </span>
+                    recentTickets.map((tkt) => {
+                      const isSelf = Boolean(currentUserId && tkt.createdById && currentUserId === tkt.createdById);
+                      const statusLabel = tkt.status === "CLOSED" ? "Closed" : tkt.status === "ONGOING" ? "Ongoing" : "Open";
+                      const notifHeadline = isSelf
+                        ? `You successfully created and ${statusLabel.toLowerCase()} ticket ${tkt.ticketNo}`
+                        : `${tkt.creatorName || "Technician"} created ${statusLabel.toLowerCase()} ticket ${tkt.ticketNo}`;
+
+                      return (
+                        <div
+                          key={tkt.id}
+                          className="p-3.5 hover:bg-gray-50/75 transition-colors flex gap-3 items-start cursor-pointer group"
+                          onClick={() => {
+                            router.push(`/tickets/${tkt.id}`);
+                            setShowNotificationDropdown(false);
+                          }}
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-xs border ${
+                              tkt.status === "CLOSED"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : tkt.status === "ONGOING"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-rose-50 text-rose-700 border-rose-200"
+                            }`}
+                          >
+                            T
                           </div>
-                          <p className="text-xs text-gray-500 font-medium mt-1 leading-relaxed truncate">{tkt.desc}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-[10px] text-primary-700 font-bold">{tkt.id}</span>
-                            <span className="text-gray-300 text-xs font-normal">•</span>
-                            <span className="text-[9px] text-gray-400 font-semibold">{tkt.time}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start gap-2">
+                              <p className="text-xs font-bold text-gray-900 leading-snug group-hover:text-primary-700 transition-colors">
+                                {notifHeadline}
+                              </p>
+                              <span
+                                className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border tracking-wide uppercase flex-shrink-0 ${
+                                  tkt.status === "CLOSED"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : tkt.status === "ONGOING"
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : "bg-rose-50 text-rose-700 border-rose-200"
+                                }`}
+                              >
+                                {tkt.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 font-medium mt-1 leading-relaxed line-clamp-2">
+                              {tkt.desc}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-2 text-[10px] text-gray-400 font-medium">
+                              <span className="font-bold text-primary-700">{tkt.ticketNo}</span>
+                              {tkt.department && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-gray-600 font-semibold">{tkt.department}</span>
+                                </>
+                              )}
+                              <span>•</span>
+                              <span>{tkt.time}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="flex flex-col items-center justify-center py-8 text-center text-gray-400">
                       <svg className="w-8 h-8 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
