@@ -10,6 +10,7 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { schema, type Db, type Tx } from "@11ftc/db";
 import {
   normalizeName,
+  type AuthContext,
   type CreateEmployeeDto,
   type EmployeeDto,
   type UpdateEmployeeDto,
@@ -65,7 +66,7 @@ export class EmployeeService {
     }));
   }
 
-  async create(dto: CreateEmployeeDto): Promise<EmployeeDto> {
+  async create(dto: CreateEmployeeDto, actor?: AuthContext): Promise<EmployeeDto> {
     const nameNormalized = normalizeName(dto.name);
     const dept = await this.requireDepartment(dto.departmentId);
 
@@ -89,10 +90,20 @@ export class EmployeeService {
       .returning();
     const r = rows[0];
     if (!r) throw new InternalServerErrorException("Failed to create employee");
+    if (actor) {
+      await this.db.insert(schema.auditLog).values({
+        ticketId: null,
+        action: "CREATE",
+        fieldName: "Employee",
+        previousValue: null,
+        newValue: `${dto.name.trim()} (${dept.name})`,
+        updatedBy: actor.userId,
+      });
+    }
     return this.toDto(r, dept.name);
   }
 
-  async update(employeeId: string, dto: UpdateEmployeeDto): Promise<EmployeeDto> {
+  async update(employeeId: string, dto: UpdateEmployeeDto, actor?: AuthContext): Promise<EmployeeDto> {
     const patch: PgUpdateSetSource<typeof schema.employees> = { updatedAt: sql`now()` };
 
     if (dto.name !== undefined) {
@@ -137,6 +148,29 @@ export class EmployeeService {
         .limit(1);
       deptName = d[0]?.name ?? null;
     }
+
+    if (actor) {
+      if (dto.isActive === false) {
+        await this.db.insert(schema.auditLog).values({
+          ticketId: null,
+          action: "RESIGN",
+          fieldName: "Employee",
+          previousValue: `${r.name} (Active)`,
+          newValue: "Resigned",
+          updatedBy: actor.userId,
+        });
+      } else if (dto.name || dto.departmentId) {
+        await this.db.insert(schema.auditLog).values({
+          ticketId: null,
+          action: "UPDATE",
+          fieldName: "Employee",
+          previousValue: null,
+          newValue: `${r.name} (${deptName})`,
+          updatedBy: actor.userId,
+        });
+      }
+    }
+
     return this.toDto(r, deptName);
   }
 

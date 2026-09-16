@@ -101,7 +101,7 @@ export class UsersService {
    * allowlist row. That account cannot do anything (`/me` returns 403 without a row), and the
    * next invite for that email adopts it rather than failing, so the state is self-healing.
    */
-  async invite(dto: InviteUserDto): Promise<InvitedUserDto> {
+  async invite(dto: InviteUserDto, actor?: AuthContext): Promise<InvitedUserDto> {
     // email is already lower-cased by the DTO transform, matching M1's JWT-email lookup.
     const existing = await this.db
       .select()
@@ -156,6 +156,17 @@ export class UsersService {
             .returning()
         )[0]!;
       });
+
+      if (actor) {
+        await this.db.insert(schema.auditLog).values({
+          ticketId: null,
+          action: "CREATE",
+          fieldName: "Account",
+          previousValue: null,
+          newValue: `${dto.email} (${dto.role})`,
+          updatedBy: actor.userId,
+        });
+      }
 
       // NOTE: the password is deliberately absent from this line.
       this.logger.log(`invited user ${dto.email} as ${dto.role}`);
@@ -236,7 +247,7 @@ export class UsersService {
     this.logger.log(`password changed by ${row.email}`);
   }
 
-  async update(userId: string, dto: UpdateUserDto): Promise<UserDto> {
+  async update(userId: string, dto: UpdateUserDto, actor?: AuthContext): Promise<UserDto> {
     const rows = await this.db
       .update(schema.users)
       .set({ ...dto, updatedAt: sql`now()` })
@@ -244,7 +255,19 @@ export class UsersService {
       .returning();
     const row = rows[0];
     if (!row) throw new NotFoundException(`User ${userId} not found`);
-    if (dto.isActive === false) this.logger.log(`deactivated user ${row.email}`);
+    if (dto.isActive === false) {
+      this.logger.log(`deactivated user ${row.email}`);
+      if (actor) {
+        await this.db.insert(schema.auditLog).values({
+          ticketId: null,
+          action: "RESIGN",
+          fieldName: "Account",
+          previousValue: `${row.email} (Active)`,
+          newValue: "Resigned / Deactivated",
+          updatedBy: actor.userId,
+        });
+      }
+    }
     return toDto(row);
   }
 }

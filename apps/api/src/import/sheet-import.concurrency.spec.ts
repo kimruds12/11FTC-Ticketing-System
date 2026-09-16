@@ -65,8 +65,16 @@ function sheet(
   ];
 }
 
-const run = (rows: SheetRow[]) =>
-  svc.run(rows, { dryRun: true, blankStatus: TicketStatus.CLOSED, assigneeAliases: {} });
+const run = (
+  rows: SheetRow[],
+  overrides: Record<string, string> = {},
+) =>
+  svc.run(rows, {
+    dryRun: true,
+    blankStatus: TicketStatus.CLOSED,
+    assigneeAliases: {},
+    assigneeOverrides: overrides,
+  });
 
 describe("M10 import — blank employee/department cells", () => {
   /**
@@ -144,5 +152,30 @@ describe("M10 import — blank employee/department cells", () => {
 
     expect(report.imported).toBe(1);
     expect(report.problems.filter((p) => p.includes("0807"))).toEqual([]);
+  });
+});
+
+describe("M10 import — source conflicts and legacy assignees", () => {
+  it("keeps the first occurrence of a duplicate ticket number and reports the later row", async () => {
+    const no = `IT-${SCOPE}-0810`;
+    const report = await run(
+      sheet([
+        { no, employee: "Newest Record", department: "__IMPORT_SPEC_DEPT__" },
+        { no, employee: "Older Record", department: "__IMPORT_SPEC_DEPT__" },
+      ]),
+    );
+
+    expect(report.imported).toBe(1);
+    expect(report.problems.find((p) => p.includes("duplicate ticket no") && p.includes("row 3")))
+      .toContain("kept row 2");
+  });
+
+  it("applies an explicit ticket-number assignee override", async () => {
+    const no = `IT-${SCOPE}-0811`;
+    const rows = sheet([{ no, employee: "Legacy Reporter", department: "__IMPORT_SPEC_DEPT__" }]);
+
+    const report = await run(rows, { [no]: "Patrick" });
+
+    expect(report.assigneeOverridesApplied).toBe(1);
   });
 });

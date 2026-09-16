@@ -13,7 +13,6 @@ import { users } from "./users.js";
 export const auditLog = pgTable("audit_log", {
   auditLogId: uuid("audit_log_id").primaryKey().defaultRandom(),
   ticketId: uuid("ticket_id")
-    .notNull()
     .references(() => tickets.ticketId),
   action: auditAction("action").notNull(),
   fieldName: varchar("field_name", { length: 64 }).notNull(),

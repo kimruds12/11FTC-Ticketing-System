@@ -9,6 +9,7 @@ export const auditAction = pgEnum("audit_action", [
   "ASSIGN",
   "STATUS_CHANGE",
   "CLOSE",
+  "RESIGN",
 ]);
 /** M10 — ticket provenance. 'IMPORT' rows came from the legacy sheet and lack `ongoing_at`. */
 export const ticketSource = pgEnum("ticket_source", ["APP", "IMPORT"]);

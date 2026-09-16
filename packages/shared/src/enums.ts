@@ -26,6 +26,7 @@ export const AuditAction = {
   ASSIGN: "ASSIGN",
   STATUS_CHANGE: "STATUS_CHANGE",
   CLOSE: "CLOSE",
+  RESIGN: "RESIGN",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

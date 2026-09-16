@@ -64,6 +64,8 @@ function printReport(r: ImportReport, sheet: string): void {
   console.log(`  main issues created   ${r.mainIssuesCreated.length}`);
   console.log(`  technicians created   ${r.techniciansCreated.length}`);
   console.log(`  multi-technician rows ${r.multiAssigneeRows}  (e.g. "Kim/Paul")`);
+  console.log(`  duplicate source rows ${r.duplicateSourceRows}`);
+  console.log(`  assignee overrides    ${r.assigneeOverridesApplied}`);
 
   if (Object.keys(r.sequenceSeeded).length) {
     const seeded = Object.entries(r.sequenceSeeded)
@@ -140,6 +142,16 @@ async function bootstrap(): Promise<void> {
       actorEmail: args.actor,
       blankStatus: args.blankStatus,
       assigneeAliases: {},
+      // The latest export leaves the 55 oldest assignee cells blank. Earlier exports
+      // contained unstable formula results ("19", "29", "22") for the same rows. The IT
+      // team confirmed that exact ticket range was Patrick's, so correct by stable ticket
+      // number instead of matching whatever the formula happened to cache this time.
+      assigneeOverrides: Object.fromEntries(
+        Array.from({ length: 55 }, (_, i) => [
+          `IT-2026-${String(i + 1).padStart(4, "0")}`,
+          "Patrick",
+        ]),
+      ),
       // The assignee column of the 55 oldest rows is a FORMULA, not a literal. The same 55
       // rows read "19", then "29", then "22" across three exports, so exact-match aliasing
       // is unwinnable — there is no fixed value to alias. The count is stable at 55 and the

@@ -143,7 +143,6 @@ export class TicketService {
       "CREATE",
       row.ticketId,
       [
-        { fieldName: "status", previousValue: null, newValue: row.status },
         ...(assignees.length
           ? [field("assignees", null, formatAssignees(assignees))]
           : []),
@@ -177,7 +176,17 @@ export class TicketService {
       }
       if (input.mainIssueId !== undefined && input.mainIssueId !== current.mainIssueId) {
         patch.mainIssueId = input.mainIssueId;
-        changes.push(field("main_issue_id", current.mainIssueId, input.mainIssueId));
+        const [oldCat] = await tx
+          .select({ label: schema.mainIssueCategory.label })
+          .from(schema.mainIssueCategory)
+          .where(eq(schema.mainIssueCategory.mainIssueId, current.mainIssueId))
+          .limit(1);
+        const [newCat] = await tx
+          .select({ label: schema.mainIssueCategory.label })
+          .from(schema.mainIssueCategory)
+          .where(eq(schema.mainIssueCategory.mainIssueId, input.mainIssueId))
+          .limit(1);
+        changes.push(field("main_issue", oldCat?.label ?? current.mainIssueId, newCat?.label ?? input.mainIssueId));
       }
       if (changes.length === 0) return; // no real change → no audit/outbox noise
 

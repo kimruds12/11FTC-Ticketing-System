@@ -34,6 +34,7 @@ const ACTION_STYLE: Record<string, string> = {
   [AuditAction.ASSIGN]: "bg-purple-50 text-purple-700 border-purple-200",
   [AuditAction.STATUS_CHANGE]: "bg-amber-50 text-amber-700 border-amber-200",
   [AuditAction.CLOSE]: "bg-red-50 text-red-700 border-red-200",
+  [AuditAction.RESIGN]: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 /** `main_issue_id` → "Main issue". The column stores DB field names; people read English. */
@@ -104,12 +105,12 @@ export default function AuditLogClient({
       ["When", "Ticket", "Action", "Field", "Previous", "New", "By"],
       ...entries.map((e) => [
         formatSheetStamp(e.updatedAt),
-        e.ticketNo,
+        e.ticketNo ?? "—",
         e.action,
         humanField(e.fieldName),
         e.previousValue ?? "",
         e.newValue ?? "",
-        e.updatedByName ?? e.updatedBy,
+        e.updatedByName ?? e.updatedBy ?? "",
       ]),
     ]);
     downloadCsv(`11ftc-audit-${offset + 1}-${to}.csv`, csv);
@@ -226,12 +227,18 @@ export default function AuditLogClient({
           {entries.map((e) => (
             <div key={e.auditLogId} className="px-4 py-3.5">
               <div className="flex items-start justify-between gap-3">
-                <Link
-                  href={`/tickets/${e.ticketId}`}
-                  className="text-sm font-bold text-gray-900 hover:text-primary-700 hover:underline"
-                >
-                  {e.ticketNo}
-                </Link>
+                {e.ticketId ? (
+                  <Link
+                    href={`/tickets/${e.ticketId}`}
+                    className="text-sm font-bold text-gray-900 hover:text-primary-700 hover:underline"
+                  >
+                    {e.ticketNo}
+                  </Link>
+                ) : (
+                  <span className="text-sm font-bold text-gray-500">
+                    {e.ticketNo ?? "—"}
+                  </span>
+                )}
                 <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${ACTION_STYLE[e.action] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
                   {humanField(e.action)}
                 </span>
@@ -272,9 +279,13 @@ export default function AuditLogClient({
                     {formatSheetStamp(e.updatedAt)}
                   </td>
                   <td className="whitespace-nowrap px-5 py-4 text-sm font-bold">
-                    <Link href={`/tickets/${e.ticketId}`} className="text-gray-700 transition-colors hover:text-primary-700 hover:underline">
-                      {e.ticketNo}
-                    </Link>
+                    {e.ticketId ? (
+                      <Link href={`/tickets/${e.ticketId}`} className="text-gray-700 transition-colors hover:text-primary-700 hover:underline">
+                        {e.ticketNo}
+                      </Link>
+                    ) : (
+                      <span className="text-gray-400 font-medium">{e.ticketNo ?? "—"}</span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-5 py-4">
                     <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${ACTION_STYLE[e.action] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>

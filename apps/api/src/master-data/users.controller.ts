@@ -4,12 +4,14 @@ import {
   resetPasswordSchema,
   updateUserSchema,
   UserRole,
+  type AuthContext,
   type InviteUserDto,
   type InvitedUserDto,
   type ResetPasswordDto,
   type UpdateUserDto,
   type UserDto,
 } from "@11ftc/shared";
+import { CurrentUser } from "../auth/current-user.decorator.js";
 import { Roles } from "../auth/roles.decorator.js";
 import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
 import { UsersService } from "./users.service.js";
@@ -37,8 +39,9 @@ export class UsersController {
   @Post("invite")
   invite(
     @Body(new ZodValidationPipe(inviteUserSchema)) dto: InviteUserDto,
+    @CurrentUser() actor: AuthContext,
   ): Promise<InvitedUserDto> {
-    return this.users.invite(dto);
+    return this.users.invite(dto, actor);
   }
 
   /** Admin reset. Also provisions an account for a row invited before ADR-0018. */
@@ -54,7 +57,8 @@ export class UsersController {
   update(
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserDto,
+    @CurrentUser() actor: AuthContext,
   ): Promise<UserDto> {
-    return this.users.update(id, dto);
+    return this.users.update(id, dto, actor);
   }
 }

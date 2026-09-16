@@ -3,10 +3,12 @@ import {
   createEmployeeSchema,
   updateEmployeeSchema,
   UserRole,
+  type AuthContext,
   type CreateEmployeeDto,
   type EmployeeDto,
   type UpdateEmployeeDto,
 } from "@11ftc/shared";
+import { CurrentUser } from "../auth/current-user.decorator.js";
 import { Roles } from "../auth/roles.decorator.js";
 import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
 import { EmployeeService } from "./employee.service.js";
@@ -37,8 +39,9 @@ export class EmployeeController {
   @Roles(UserRole.IT_ADMINISTRATOR)
   create(
     @Body(new ZodValidationPipe(createEmployeeSchema)) dto: CreateEmployeeDto,
+    @CurrentUser() user: AuthContext,
   ): Promise<EmployeeDto> {
-    return this.employees.create(dto);
+    return this.employees.create(dto, user);
   }
 
   @Patch(":id")
@@ -46,7 +49,8 @@ export class EmployeeController {
   update(
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateEmployeeSchema)) dto: UpdateEmployeeDto,
+    @CurrentUser() user: AuthContext,
   ): Promise<EmployeeDto> {
-    return this.employees.update(id, dto);
+    return this.employees.update(id, dto, user);
   }
 }

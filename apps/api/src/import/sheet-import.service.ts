@@ -61,6 +61,13 @@ export interface ImportOptions {
   /** Sheet assignee text that maps to a real person, matched exactly. */
   assigneeAliases: Record<string, string>;
   /**
+   * Source-specific correction keyed by the stable ticket number.
+   *
+   * Use this only for mappings the IT team has confirmed. It takes precedence over the raw
+   * assignee cell because legacy formula output is not stable across workbook exports.
+   */
+  assigneeOverrides?: Record<string, string>;
+  /**
    * Who a PURELY NUMERIC assignee belongs to.
    *
    * The assignee column of the 55 oldest rows is a formula, not a literal: it has read "19",
@@ -82,6 +89,8 @@ export interface ImportReport {
   employeesCreated: number;
   disambiguatedEmployees: string[];
   techniciansCreated: string[];
+  duplicateSourceRows: number;
+  assigneeOverridesApplied: number;
   /** Rows handled by more than one technician — the case a single FK could not express. */
   multiAssigneeRows: number;
   sequenceSeeded: Record<string, number>;
@@ -185,6 +194,8 @@ export class SheetImportService {
       employeesCreated: 0,
       disambiguatedEmployees: [],
       techniciansCreated: [],
+      duplicateSourceRows: 0,
+      assigneeOverridesApplied: 0,
       multiAssigneeRows: 0,
       sequenceSeeded: {},
       problems: [],
@@ -194,6 +205,7 @@ export class SheetImportService {
 
     /* ---- 1. validate rows, and resolve blank cells ONCE ------------------ */
     const raw: ValidRow[] = [];
+    const firstRowByTicketNo = new Map<string, number>();
     for (const row of rows) {
       if (row.rowNum === 1) continue; // header
       const no = row.cells[COL.ticketNo] ?? "";
@@ -204,6 +216,15 @@ export class SheetImportService {
         );
         continue;
       }
+      const firstRow = firstRowByTicketNo.get(no);
+      if (firstRow !== undefined) {
+        report.duplicateSourceRows++;
+        report.problems.push(
+          `row ${row.rowNum}: duplicate ticket no ${no} — kept row ${firstRow}, skipped this row`,
+        );
+        continue;
+      }
+      firstRowByTicketNo.set(no, row.rowNum);
       if (!Number.isFinite(Number(row.cells[COL.date]))) {
         report.problems.push(`row ${row.rowNum} (${no}): unreadable date — skipped`);
         continue;
@@ -397,7 +418,9 @@ export class SheetImportService {
     const assigneesByTicket = new Map<string, string[]>();
     const wantedTechs = new Map<string, string>(); // normalized → display name
     for (const c of todo) {
-      const aliased = opts.assigneeAliases[c.rawAssignee] ?? c.rawAssignee;
+      const override = opts.assigneeOverrides?.[c.ticketNo];
+      if (override !== undefined) report.assigneeOverridesApplied++;
+      const aliased = override ?? opts.assigneeAliases[c.rawAssignee] ?? c.rawAssignee;
       const names = splitAssignees(aliased);
       if (names.length === 0) continue;
       if (names.length > 1) report.multiAssigneeRows++;

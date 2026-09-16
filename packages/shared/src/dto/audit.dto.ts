@@ -29,6 +29,7 @@ export const auditActionSchema = z.enum([
   AuditAction.ASSIGN,
   AuditAction.STATUS_CHANGE,
   AuditAction.CLOSE,
+  AuditAction.RESIGN,
 ]);
 
 /**
@@ -36,7 +37,7 @@ export const auditActionSchema = z.enum([
  * one ticket's history riding along on `GET /tickets/:id`.
  *
  * `q` matches the ticket number or the changed field's values, because the two questions an
- * administrator actually arrives with are "what happened to IT-2026-0181?" and "who changed
+ * admin asks are "what happened to ticket 543?" and "did anyone touch that department or flip
  * a status yesterday?". Dates filter on the entry's own `updated_at` — when the change was
  * made — never on the ticket's `date`, which is when the concern was reported.
  */
@@ -58,8 +59,8 @@ export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
  * them client-side would need a second admin-only call per row.
  */
 export interface AuditLogItemDto extends AuditEntryDto {
-  ticketId: string;
-  ticketNo: string;
+  ticketId: string | null;
+  ticketNo: string | null;
 }
 
 export interface AuditLogListResult {

@@ -81,7 +81,19 @@ export class AuditService {
       );
       if (matches) conditions.push(matches);
     }
+    // Exclude automatic initial closed status logs on ticket creation unless explicitly querying action='CREATE'
+    if (!query.action) {
+      conditions.push(
+        sql`NOT (${schema.auditLog.action} = 'CREATE' AND (${schema.auditLog.fieldName} = 'status' OR ${schema.auditLog.fieldName} = 'Status'))`,
+      );
+    }
     const where = conditions.length ? and(...conditions) : undefined;
+
+    const categories = await this.db
+      .select({ id: schema.mainIssueCategory.mainIssueId, label: schema.mainIssueCategory.label })
+      .from(schema.mainIssueCategory);
+    const catMap = new Map(categories.map((c) => [c.id, c.label]));
+    const resolveVal = (val: string | null) => (val ? catMap.get(val) ?? val : val);
 
     const rows = await this.db
       .select({
@@ -97,7 +109,7 @@ export class AuditService {
         updatedAt: schema.auditLog.updatedAt,
       })
       .from(schema.auditLog)
-      .innerJoin(schema.tickets, eq(schema.auditLog.ticketId, schema.tickets.ticketId))
+      .leftJoin(schema.tickets, eq(schema.auditLog.ticketId, schema.tickets.ticketId))
       .leftJoin(schema.users, eq(schema.auditLog.updatedBy, schema.users.userId))
       .where(where)
       .orderBy(desc(schema.auditLog.updatedAt))
@@ -109,7 +121,7 @@ export class AuditService {
     const [totals] = await this.db
       .select({ value: count() })
       .from(schema.auditLog)
-      .innerJoin(schema.tickets, eq(schema.auditLog.ticketId, schema.tickets.ticketId))
+      .leftJoin(schema.tickets, eq(schema.auditLog.ticketId, schema.tickets.ticketId))
       .leftJoin(schema.users, eq(schema.auditLog.updatedBy, schema.users.userId))
       .where(where);
 
@@ -119,9 +131,9 @@ export class AuditService {
         ticketId: r.ticketId,
         ticketNo: r.ticketNo,
         action: r.action,
-        fieldName: r.fieldName,
-        previousValue: r.previousValue,
-        newValue: r.newValue,
+        fieldName: r.fieldName === "main_issue_id" ? "Main issue" : r.fieldName,
+        previousValue: resolveVal(r.previousValue),
+        newValue: resolveVal(r.newValue),
         updatedBy: r.updatedBy,
         updatedByName: r.updatedByName,
         updatedAt: new Date(r.updatedAt).toISOString(),
@@ -132,9 +144,12 @@ export class AuditService {
 
   /** Immutable history for a ticket, newest first — served via M5's `GET /tickets/:id`. */
   async history(ticketId: string): Promise<AuditEntryDto[]> {
-    // The actor's NAME is resolved here, at the boundary. The UI used to look it up against
-    // the admin-only `/users` list, so IT Staff saw every entry as "System user" — the
-    // history was legible only to admins. `updated_by` stays the canonical id.
+    const categories = await this.db
+      .select({ id: schema.mainIssueCategory.mainIssueId, label: schema.mainIssueCategory.label })
+      .from(schema.mainIssueCategory);
+    const catMap = new Map(categories.map((c) => [c.id, c.label]));
+    const resolveVal = (val: string | null) => (val ? catMap.get(val) ?? val : val);
+
     const rows = await this.db
       .select({
         auditLogId: schema.auditLog.auditLogId,
@@ -153,9 +168,9 @@ export class AuditService {
     return rows.map((r) => ({
       auditLogId: r.auditLogId,
       action: r.action,
-      fieldName: r.fieldName,
-      previousValue: r.previousValue,
-      newValue: r.newValue,
+      fieldName: r.fieldName === "main_issue_id" ? "Main issue" : r.fieldName,
+      previousValue: resolveVal(r.previousValue),
+      newValue: resolveVal(r.newValue),
       updatedBy: r.updatedBy,
       updatedByName: r.updatedByName,
       updatedAt: new Date(r.updatedAt).toISOString(),
