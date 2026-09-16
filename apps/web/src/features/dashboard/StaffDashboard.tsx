@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
 import type {
   CountPoint,
   DatePoint,
@@ -11,13 +12,13 @@ import type {
 } from "@11ftc/shared";
 import { browserApi } from "@/services/browser";
 import { analyticsService } from "@/services/analytics.service";
+import { ticketsService } from "@/services/tickets.service";
 import StatCard from "./StatCard";
 import ResolutionTrendChart from "./ResolutionTrendChart";
 import ByDepartmentChart from "./ByDepartmentChart";
 import ByTechnicianChart from "./ByTechnicianChart";
 import TopIssuesChart from "./TopIssuesChart";
 import {
-  GRANULARITIES,
   RANGES,
   describeWindow,
   windowFor,
@@ -26,6 +27,7 @@ import {
 
 interface DashData {
   status: StatusCounts;
+  todayCount: number;
   solved: DatePoint[];
   byDept: CountPoint[];
   byTech: CountPoint[];
@@ -36,6 +38,7 @@ interface DashData {
 
 const EMPTY: DashData = {
   status: { open: 0, ongoing: 0, closed: 0, total: 0 },
+  todayCount: 0,
   solved: [],
   byDept: [],
   byTech: [],
@@ -45,15 +48,10 @@ const EMPTY: DashData = {
 };
 
 /**
- * StaffDashboard — IT Staff view. Live analytics (M9) plus the Ongoing ageing queue
- * (FR-24). Focuses on outstanding work rather than admin-wide oversight.
- *
- * Defaults to ALL TIME for the same reason as the admin view: the history predates today, so
- * a short default window renders empty and reads as a broken dashboard.
+ * StaffDashboard — IT Staff view with synchronized layout matching Admin,
+ * featuring the Ageing Ongoing Tickets card and prioritized chart arrangement.
  */
 export default function StaffDashboard() {
-  // null until mount: a live clock rendered during SSR would not match the client's time on
-  // hydration. Starting from null keeps server output and first client render identical.
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [range, setRange] = useState<RangeKey>("all");
   const [granularity, setGranularity] = useState<Granularity>("month");
@@ -78,8 +76,10 @@ export default function StaffDashboard() {
     setRefreshing(true);
     try {
       const svc = analyticsService(browserApi());
+      const tSvc = ticketsService(browserApi());
       const w = analyticsWindow;
-      const [status, solved, byDept, byTech, byCat, ftf, ageing] = await Promise.all([
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const [status, solved, byDept, byTech, byCat, ftf, ageing, todayRes] = await Promise.all([
         svc.status(),
         svc.solved(w),
         svc.byDepartment(w),
@@ -87,11 +87,20 @@ export default function StaffDashboard() {
         svc.byCategory(w),
         svc.firstTimeFix(w),
         svc.ongoingAgeing(),
+        tSvc.list({ dateFrom: todayStr, dateTo: todayStr, limit: 1 }).catch(() => ({ total: 0 })),
       ]);
-      setData({ status, solved, byDept, byTech, byCat, ftf, ageing });
+      setData({
+        status,
+        todayCount: todayRes?.total ?? 0,
+        solved,
+        byDept,
+        byTech,
+        byCat,
+        ftf,
+        ageing,
+      });
       setLoadError(null);
     } catch (e) {
-      // Surfaced, never swallowed — a blocked or failing call must not look like "no data".
       setData(EMPTY);
       setLoadError(e instanceof Error ? e.message : "Could not reach the analytics API.");
     } finally {
@@ -143,42 +152,33 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      {/* ── Range + Granularity + Action Row ──────────── */}
+      {/* ── Range + Actions Row (matching Admin dropdown) ──────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-            {RANGES.map((r) => (
-              <button
-                key={r.key}
-                onClick={() => {
-                  setRange(r.key);
-                  setGranularity(r.defaultGranularity);
-                }}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
-                  range === r.key
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg">
-            {GRANULARITIES.map((g) => (
-              <button
-                key={g.key}
-                onClick={() => setGranularity(g.key)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-150 ${
-                  granularity === g.key
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {g.label}
-              </button>
-            ))}
+          <div className="relative inline-block">
+            <select
+              value={range}
+              onChange={(e) => {
+                const selectedKey = e.target.value as RangeKey;
+                const found = RANGES.find((r) => r.key === selectedKey);
+                if (found) {
+                  setRange(found.key);
+                  setGranularity(found.defaultGranularity);
+                }
+              }}
+              className="appearance-none bg-white border border-gray-200 text-slate-800 text-xs font-bold rounded-lg pl-3.5 pr-8 py-2 shadow-xs hover:border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 cursor-pointer transition-all"
+            >
+              {RANGES.map((r) => (
+                <option key={r.key} value={r.key} className="font-semibold text-xs py-1">
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -201,24 +201,38 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-
       {loadError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           Analytics could not be loaded: {loadError}
         </div>
       )}
-      {/* ── Stat Cards (live, M9 /analytics) ─────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+      {/* ── Stat Cards (5 cards matching Admin) ─────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
-          title="Open Tickets"
-          value={stat(data?.status.open)}
-          badge="Awaiting"
+          title="Today's Tickets"
+          value={stat(data?.todayCount)}
+          badge="Logged Today"
           badgeColor="bg-blue-50 text-blue-700 border border-blue-200"
           iconBg="bg-blue-50"
           icon={
-            <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                 d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+            </svg>
+          }
+        />
+
+        <StatCard
+          title="Ongoing"
+          value={stat(data?.status.ongoing)}
+          badge="Active Queue"
+          badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
+          iconBg="bg-amber-50"
+          icon={
+            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }
         />
@@ -238,15 +252,14 @@ export default function StaffDashboard() {
         />
 
         <StatCard
-          title="Total Ongoing"
-          value={stat(data?.status.ongoing)}
-          badge="Active Queue"
-          badgeColor="bg-amber-50 text-amber-700 border border-amber-200"
-          iconBg="bg-amber-50"
+          title="Total Tickets"
+          value={stat(data?.status.total)}
+          badge="All Time"
+          badgeColor="bg-gray-50 text-gray-700 border border-gray-200"
+          iconBg="bg-slate-50"
           icon={
-            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           }
         />
@@ -254,7 +267,7 @@ export default function StaffDashboard() {
         <StatCard
           title="First-Time Fix"
           value={ftfPct}
-          badge="FR-23"
+          badge="Resolved Tickets"
           badgeColor="bg-green-50 text-green-700 border border-green-200"
           iconBg="bg-green-50"
           icon={
@@ -266,30 +279,108 @@ export default function StaffDashboard() {
         />
       </div>
 
-      {/* ── Charts Row ───────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-5 lg:col-span-2 space-y-4">
-          <ResolutionTrendChart
-            data={data?.solved}
-            granularity={granularity}
-            emptyHint={`No tickets were closed ${windowLabel}.`}
-          />
+      {/* ── 1. Top Section: Top Issues (Donut) + Ongoing Tickets (Ageing) Side by Side ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card p-6 space-y-4 shadow-sm border border-gray-200/80 rounded-2xl flex flex-col justify-between">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900">Main Issue Categories</h2>
+            <p className="text-xs text-slate-400 font-semibold mt-0.5">Top issue types and percentage distribution</p>
+          </div>
+          <TopIssuesChart data={data?.byCat} />
         </div>
 
-        <div className="card p-5 space-y-4">
+        <div className="card p-6 space-y-4 shadow-sm border border-gray-200/80 rounded-2xl flex flex-col justify-between">
           <div>
-            <h2 className="text-base font-bold text-gray-900">By Department</h2>
-            <p className="text-xs text-gray-400 font-medium mt-0.5">Ticket volume distribution (FR-18)</p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900">Ongoing Tickets (Ageing)</h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Oldest outstanding tickets first (FR-24)
+                </p>
+              </div>
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                {data?.ageing.length ?? 0} active
+              </span>
+            </div>
           </div>
-          <ByDepartmentChart data={data?.byDept} />
+
+          <div className="flex-1 flex flex-col justify-between">
+            <div className="space-y-3 max-h-[310px] overflow-y-auto pr-1">
+              {!data ? (
+                <p className="text-xs text-gray-400 font-medium py-10 text-center">Loading queue…</p>
+              ) : data.ageing.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2 font-bold">
+                    ✓
+                  </div>
+                  <p className="text-sm font-bold text-slate-800">No ongoing tickets</p>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">All tickets are resolved or closed.</p>
+                </div>
+              ) : (
+                data.ageing.map((tkt) => (
+                  <div
+                    key={tkt.ticketId}
+                    className="p-3.5 bg-white hover:bg-slate-50/90 rounded-xl border border-gray-200 shadow-xs hover:border-primary-300 transition-all group"
+                  >
+                    <div className="flex justify-between items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/tickets/${tkt.ticketId}?from=dashboard`}
+                          className="text-xs font-bold text-primary-700 bg-primary-50 px-2.5 py-1 rounded-md border border-primary-200 group-hover:bg-primary-100 transition-colors"
+                        >
+                          {tkt.ticketNo}
+                        </Link>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 font-extrabold uppercase px-2.5 py-0.5 rounded-full tracking-wider">
+                          {tkt.ageDays} {tkt.ageDays === 1 ? "DAY" : "DAYS"}
+                        </span>
+                        <Link
+                          href={`/tickets/${tkt.ticketId}?from=dashboard&edit=true`}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] font-bold text-slate-600 hover:text-primary-700 bg-slate-100 hover:bg-white px-2 py-0.5 rounded border border-slate-200"
+                        >
+                          Edit
+                        </Link>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-500 font-medium mt-2 pt-1.5 border-t border-slate-100">
+                      <span>
+                        Ongoing since <span className="font-bold text-slate-700">{tkt.ongoingAt.slice(0, 10)}</span>
+                      </span>
+                      <Link
+                        href={`/tickets/${tkt.ticketId}?from=dashboard`}
+                        className="text-[11px] font-bold text-primary-700 hover:text-primary-800 hover:underline flex items-center gap-1"
+                      >
+                        View &rarr;
+                      </Link>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {data && data.ageing.length > 0 && (
+              <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-500">
+                  Select any ticket to view details, re-assign, or edit remarks.
+                </span>
+                <Link
+                  href="/tickets"
+                  className="text-xs font-bold text-primary-700 hover:text-primary-800 hover:underline whitespace-nowrap ml-2"
+                >
+                  View All &rarr;
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── By Technician (FR-19) ─────────────────────── */}
-      <div className="card p-5 space-y-4">
+      {/* ── 2. Middle Section: By Technician (Full Width) ── */}
+      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
         <div>
-          <h2 className="text-base font-bold text-gray-900">By Technician</h2>
-          <p className="text-xs text-gray-400 font-medium mt-0.5">
+          <h2 className="text-base font-extrabold text-slate-900">By Technician</h2>
+          <p className="text-xs text-slate-400 font-semibold mt-0.5">
             Tickets handled per person (FR-19)
           </p>
         </div>
@@ -299,53 +390,23 @@ export default function StaffDashboard() {
         />
       </div>
 
-      {/* ── Bottom Row (Top Issues + Ongoing Tickets) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-5 space-y-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Top Issues</h2>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">Categorized ticket breakdown (FR-20)</p>
-            </div>
-          </div>
-          <TopIssuesChart data={data?.byCat} />
+      {/* ── 3. Middle Section: By Department (Full Width matching Admin) ── */}
+      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-900">By Department</h2>
+          <p className="text-xs text-slate-400 font-semibold mt-0.5">Administrative ticket distribution per department (FR-18)</p>
         </div>
+        <ByDepartmentChart data={data?.byDept} />
+      </div>
 
-        <div className="card p-5 space-y-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Ongoing Tickets (Ageing)</h2>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">
-                Oldest outstanding tickets first (FR-24)
-              </p>
-            </div>
-          </div>
-          <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-            {!data ? (
-              <p className="text-xs text-gray-400 font-medium py-6 text-center">Loading queue…</p>
-            ) : data.ageing.length === 0 ? (
-              <p className="text-xs text-gray-400 font-medium py-6 text-center">No ongoing tickets. 🎉</p>
-            ) : (
-              data.ageing.map((tkt) => (
-                <div key={tkt.ticketId} className="flex justify-between items-center p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-primary-700 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-200">
-                        {tkt.ticketNo}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 font-medium mt-1">
-                      Ongoing since <span className="font-bold">{tkt.ongoingAt.slice(0, 10)}</span>
-                    </p>
-                  </div>
-                  <span className="text-[10px] text-red-600 bg-red-50 border border-red-200 font-bold uppercase px-2 py-0.5 rounded-full">
-                    {tkt.ageDays} {tkt.ageDays === 1 ? "day" : "days"}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+      {/* ── 4. Bottom Section: Resolution Trend (Full Width) ───────────────────────── */}
+      <div className="card p-6 w-full space-y-4 shadow-sm border border-gray-200/80 rounded-2xl">
+        <ResolutionTrendChart
+          data={data?.solved}
+          granularity={granularity}
+          onGranularityChange={setGranularity}
+          emptyHint={`No tickets were closed ${windowLabel}.`}
+        />
       </div>
     </div>
   );

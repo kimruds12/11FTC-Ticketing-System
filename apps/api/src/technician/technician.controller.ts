@@ -3,10 +3,12 @@ import {
   createTechnicianSchema,
   updateTechnicianSchema,
   UserRole,
+  type AuthContext,
   type CreateTechnicianDto,
   type TechnicianDto,
   type UpdateTechnicianDto,
 } from "@11ftc/shared";
+import { CurrentUser } from "../auth/current-user.decorator.js";
 import { Roles } from "../auth/roles.decorator.js";
 import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
 import { TechnicianService } from "./technician.service.js";
@@ -38,8 +40,9 @@ export class TechnicianController {
   @Roles(UserRole.IT_ADMINISTRATOR)
   create(
     @Body(new ZodValidationPipe(createTechnicianSchema)) dto: CreateTechnicianDto,
+    @CurrentUser() actor: AuthContext,
   ): Promise<TechnicianDto> {
-    return this.technicians.create(dto);
+    return this.technicians.create(dto, actor);
   }
 
   @Patch(":id")

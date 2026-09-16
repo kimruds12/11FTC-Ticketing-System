@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   formatAssignees,
@@ -48,10 +48,11 @@ export default function TicketDetailClient({
   mainIssues,
 }: TicketDetailClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [busy, startTransition] = useTransition();
 
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(searchParams.get("edit") === "true");
   const [closing, setClosing] = useState(false);
 
   const [concern, setConcern] = useState(ticket.concern);
@@ -59,44 +60,56 @@ export default function TicketDetailClient({
   const [mainIssueId, setMainIssueId] = useState(ticket.mainIssueId);
   const [closeRemarks, setCloseRemarks] = useState("");
 
-  // Names, not ids: a technician typed here for the first time has no id yet — the API
-  // resolve-or-creates on save, the same way the encode form works.
   const [draftAssignees, setDraftAssignees] = useState(ticket.assignees.map((a) => a.name));
   const assigneesChanged =
     formatAssignees(draftAssignees.map((name) => ({ technicianId: name, name }))) !==
     formatAssignees(ticket.assignees);
 
-  const isClosed = ticket.status === TicketStatus.CLOSED;
-  const canMarkOngoing = ticket.status === TicketStatus.OPEN;
-  const canClose = !isClosed;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isClosed = ticket.status === "Closed";
+  const canMarkOngoing = ticket.status === "Open";
+  const canClose = ticket.status !== "Closed";
 
   /** Every mutation funnels through here so error handling and refresh stay identical. */
-  function run(action: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
+  function run(action: () => Promise<{ ok: boolean; error?: string }>, onSuccess?: () => void) {
     setError(null);
     startTransition(async () => {
       const res = await action();
       if (!res.ok) {
-        setError(res.error ?? "Unexpected error");
+        setError(res.error ?? "Operation failed");
         return;
       }
-      onDone?.();
+      onSuccess?.();
       router.refresh();
     });
   }
 
   return (
-    <div className="max-w-[1000px] mx-auto space-y-6 md:space-y-8 px-4 md:px-8 py-6">
-      {/* ── Header ─────────────────────────────────── */}
-      <div className="space-y-2">
-        <Link
-          href="/tickets"
-          className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-primary-700 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Ticket Queue
-        </Link>
+    <div className="space-y-6 w-full px-4 md:px-8 py-6">
+      {/* ── Top Bar ───────────────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-primary-700 transition-colors bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-xs hover:border-gray-300"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Dashboard
+          </Link>
+          <span className="text-gray-300 text-sm">/</span>
+          <Link
+            href="/tickets"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            Ticket Queue
+          </Link>
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -106,8 +119,8 @@ export default function TicketDetailClient({
               </h1>
               <StatusBadge status={ticket.status} />
             </div>
-            <p className="text-sm text-gray-400 font-semibold mt-1">
-              Concern dated {formatSheetDate(ticket.date)} • Encoded {formatStamp(ticket.createdAt)}
+            <p className="text-sm text-gray-400 font-semibold mt-1" suppressHydrationWarning>
+              Concern dated {formatSheetDate(ticket.date)} • Encoded <span suppressHydrationWarning>{mounted ? formatStamp(ticket.createdAt) : formatSheetDate(ticket.createdAt)}</span>
             </p>
           </div>
 
@@ -401,7 +414,7 @@ export default function TicketDetailClient({
                   <div className="text-[10px] text-gray-400 font-semibold leading-relaxed break-words">
                     {entry.previousValue ?? "—"} &rarr; {entry.newValue ?? "—"}
                   </div>
-                  <div className="text-[10px] text-gray-400 font-medium">
+                  <div className="text-[10px] text-gray-400 font-medium" suppressHydrationWarning>
                     {entry.updatedByName ?? "System user"} • {formatStamp(entry.updatedAt)}
                   </div>
                 </li>

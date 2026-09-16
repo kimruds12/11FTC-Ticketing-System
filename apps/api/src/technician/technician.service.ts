@@ -10,6 +10,7 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { schema, type Db, type Tx } from "@11ftc/db";
 import {
   normalizeName,
+  type AuthContext,
   type CreateTechnicianDto,
   type TechnicianDto,
   type TicketAssigneeDto,
@@ -65,7 +66,7 @@ export class TechnicianService {
     return rows.map(toDto);
   }
 
-  async create(dto: CreateTechnicianDto): Promise<TechnicianDto> {
+  async create(dto: CreateTechnicianDto, actor?: AuthContext): Promise<TechnicianDto> {
     const nameNormalized = normalizeName(dto.name);
     const dup = await this.db
       .select()
@@ -85,6 +86,16 @@ export class TechnicianService {
       .returning();
     const r = rows[0];
     if (!r) throw new InternalServerErrorException("Failed to create technician");
+    if (actor) {
+      await this.db.insert(schema.auditLog).values({
+        ticketId: null,
+        action: "CREATE",
+        fieldName: "Technician",
+        previousValue: null,
+        newValue: dto.name.trim(),
+        updatedBy: actor.userId,
+      });
+    }
     return toDto(r);
   }
 

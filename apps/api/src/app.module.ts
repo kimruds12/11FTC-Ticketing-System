@@ -14,6 +14,7 @@ import { TicketModule } from "./ticket/ticket.module.js";
 import { AuditModule } from "./audit/audit.module.js";
 import { OutboxModule } from "./outbox/outbox.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
+import { NotificationsModule } from "./notifications/notifications.module.js";
 
 /**
  * The HTTP application module. Each imported module maps 1:1 to M1..M9 in
@@ -39,6 +40,7 @@ import { AnalyticsModule } from "./analytics/analytics.module.js";
     AuditModule, // M6
     OutboxModule, // M7
     AnalyticsModule, // M9
+    NotificationsModule,
   ],
   controllers: [AppController], // version-neutral /api/health and /api/version
 })

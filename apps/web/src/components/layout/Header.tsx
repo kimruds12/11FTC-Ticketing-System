@@ -6,6 +6,7 @@ import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { UserRole } from "@11ftc/shared";
 import { clearSession } from "@/store/slices/authSlice";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { browserApi } from "@/services/browser";
 
 /**
  * Application Header
@@ -142,6 +143,44 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<"activity" | "tickets">("activity");
   const notifRef = useRef<HTMLDivElement>(null);
+  const [recentActivities, setRecentActivities] = useState<ActivityNotification[]>([]);
+  const [recentTickets, setRecentTickets] = useState<TicketNotification[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    async function fetchNotifs() {
+      try {
+        const res = await browserApi().get<{
+          activities: { id: string; title: string; desc: string; time: string; tag: string }[];
+          tickets: { id: string; title: string; status: "OPEN" | "ONGOING" | "CLOSED"; desc: string; time: string }[];
+        }>("/notifications");
+        if (active && res.data) {
+          const actList: ActivityNotification[] = (res.data.activities ?? []).map((a) => ({
+            id: a.id,
+            title: a.title,
+            desc: a.desc,
+            time: a.time,
+            tag: a.tag,
+            icon: (
+              <svg className="w-4 h-4 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            ),
+          }));
+          setRecentActivities(actList);
+          setRecentTickets(res.data.tickets ?? []);
+        }
+      } catch {
+        // quiet fallback
+      }
+    }
+    void fetchNotifs();
+    const timer = setInterval(() => void fetchNotifs(), 30_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -152,10 +191,6 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // Mock Notifications data for Activity and Tickets tabs (cleared/empty per instructions)
-  const recentActivities: ActivityNotification[] = [];
-  const recentTickets: TicketNotification[] = [];
 
   /* ── Sidebar offset calculation ──────────────────── */
   const sidebarWidth = isSidebarCollapsed ? "72px" : "240px";
@@ -244,15 +279,18 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                 d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
+            {(recentActivities.length > 0 || recentTickets.length > 0) && (
+              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-600 rounded-full ring-2 ring-white animate-pulse" />
+            )}
           </button>
 
-          {/* Redesigned Notification Popover (Picture 4 aligned, 0 Active notifications) */}
+          {/* Redesigned Notification Popover */}
           {showNotificationDropdown && (
             <div className="absolute right-0 mt-3 w-[400px] bg-white rounded-2xl border border-gray-200 shadow-dropdown py-4 z-dropdown animate-slide-down flex flex-col max-h-[500px]">
               <div className="px-4 pb-3 flex justify-between items-center border-b border-gray-100">
                 <span className="text-xs font-bold text-gray-800 tracking-wider">NOTIFICATIONS</span>
-                <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-200">
-                  0 ACTIVE
+                <span className="bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-200">
+                  {recentActivities.length + recentTickets.length} ACTIVE
                 </span>
               </div>
 
@@ -349,7 +387,17 @@ export default function Header({ onMenuToggle, isSidebarCollapsed }: HeaderProps
               </div>
 
               <div className="border-t border-gray-100 px-4 pt-3 text-center">
-                <button className="text-xs font-bold text-primary-700 hover:text-primary-800 transition-colors uppercase tracking-wider">
+                <button
+                  onClick={() => {
+                    if (role === UserRole.IT_ADMINISTRATOR) {
+                      router.push("/audit-logs");
+                    } else {
+                      router.push("/tickets");
+                    }
+                    setShowNotificationDropdown(false);
+                  }}
+                  className="text-xs font-bold text-primary-700 hover:text-primary-800 transition-colors uppercase tracking-wider"
+                >
                   VIEW ALL ACTIVITY
                 </button>
               </div>
