@@ -16,6 +16,7 @@ import DirectoryPicker, { type DirectoryOption } from "@/components/ui/Directory
 interface AssigneePickerProps {
   value: string[];
   onChange: (names: string[]) => void;
+  onPendingTextChange?: (text: string) => void;
   disabled?: boolean;
   hint?: string;
   invalid?: boolean;
@@ -24,6 +25,7 @@ interface AssigneePickerProps {
 export default function AssigneePicker({
   value,
   onChange,
+  onPendingTextChange,
   disabled = false,
   hint,
   invalid = false,
@@ -38,6 +40,7 @@ export default function AssigneePicker({
     <DirectoryPicker
       value={value}
       onChange={onChange}
+      onPendingTextChange={onPendingTextChange}
       search={search}
       multiple
       max={5} // matches the shared schema's `.max(5)`

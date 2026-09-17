@@ -20,7 +20,7 @@ import type { TicketListResult } from "@11ftc/shared";
  * Filters arrive as URL params. They are validated here before being forwarded because the API
  * schema is strict — a stale or hand-edited URL must not turn into a 400 for the whole page.
  */
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 

@@ -47,7 +47,7 @@ function buildQuery(filters: TicketFilterValues, offset: number, limit: number):
     if (value) params.set(key, value);
   }
   if (offset > 0) params.set("offset", String(offset));
-  if (limit !== 50) params.set("limit", String(limit));
+  if (limit !== 10) params.set("limit", String(limit));
   return params.toString();
 }
 
@@ -67,14 +67,18 @@ export default function TicketQueueClient({
 
   const [filters, setFilters] = useState<TicketFilterValues>(initialFilters);
   const [pageOffset, setPageOffset] = useState(offset);
+  const [pageLimit, setPageLimit] = useState(limit);
+
+  useEffect(() => {
+    setPageOffset(offset);
+  }, [offset]);
+
+  useEffect(() => {
+    setPageLimit(limit);
+  }, [limit]);
 
   /**
    * Encoding is a modal over this list, never a route.
-   *
-   * `/tickets/new` used to be its own page, which meant a full server round trip — lookups,
-   * layout, shell — before the encoder could type anything, and it dropped them somewhere
-   * else afterwards. The lookups are already on this page for the filter dropdowns, so the
-   * modal opens instantly and the queue is still underneath when it closes.
    */
   const [encoding, setEncoding] = useState<null | "single" | "bulk">(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -83,8 +87,8 @@ export default function TicketQueueClient({
   const debouncedQ = useDebounce(filters.q, 350);
 
   const targetQuery = useMemo(
-    () => buildQuery({ ...filters, q: debouncedQ }, pageOffset, limit),
-    [filters, debouncedQ, pageOffset, limit],
+    () => buildQuery({ ...filters, q: debouncedQ }, pageOffset, pageLimit),
+    [filters, debouncedQ, pageOffset, pageLimit],
   );
 
   useEffect(() => {
@@ -93,7 +97,7 @@ export default function TicketQueueClient({
     router.replace(targetQuery ? `${pathname}?${targetQuery}` : pathname, { scroll: false });
   }, [targetQuery, initialFilters, offset, limit, pathname, router]);
 
-  /** Any filter change resets to the first page — page 3 of the old result set is meaningless. */
+  /** Any filter change resets to the first page. */
   function handleFilterChange(patch: Partial<TicketFilterValues>) {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPageOffset(0);
@@ -101,6 +105,11 @@ export default function TicketQueueClient({
 
   function handleReset() {
     setFilters(EMPTY_FILTERS);
+    setPageOffset(0);
+  }
+
+  function handleLimitChange(nextLimit: number) {
+    setPageLimit(nextLimit);
     setPageOffset(0);
   }
 
@@ -161,9 +170,10 @@ export default function TicketQueueClient({
       <TicketTable
         tickets={tickets}
         total={total}
-        limit={limit}
-        offset={offset}
+        limit={pageLimit}
+        offset={pageOffset}
         onPageChange={setPageOffset}
+        onLimitChange={handleLimitChange}
         onEncode={() => setEncoding("single")}
       />
 

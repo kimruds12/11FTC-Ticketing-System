@@ -141,10 +141,28 @@ export class TicketRepository {
       conditions.push(eq(schema.employees.departmentId, query.departmentId));
     }
     if (query.q) {
+      const q = query.q.trim();
       conditions.push(
         or(
-          ilike(schema.tickets.concern, `%${query.q}%`),
-          ilike(schema.tickets.ticketNo, `%${query.q}%`),
+          ilike(schema.tickets.concern, `%${q}%`),
+          ilike(schema.tickets.remarks, `%${q}%`),
+          ilike(schema.tickets.ticketNo, `%${q}%`),
+          ilike(schema.employees.name, `%${q}%`),
+          exists(
+            this.db
+              .select({ one: sql`1` })
+              .from(schema.ticketAssignees)
+              .innerJoin(
+                schema.technicians,
+                eq(schema.ticketAssignees.technicianId, schema.technicians.technicianId),
+              )
+              .where(
+                and(
+                  eq(schema.ticketAssignees.ticketId, schema.tickets.ticketId),
+                  ilike(schema.technicians.name, `%${q}%`),
+                ),
+              ),
+          ),
         ),
       );
     }

@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import type { Pool } from "pg";
 import { createDb, schema, type Db } from "@11ftc/db";
-import { UserRole, type AuthContext, type EncodeTicketDto } from "@11ftc/shared";
+import {
+  formatAssignees,
+  TicketStatus,
+  UserRole,
+  type AuthContext,
+  type EncodeTicketDto,
+} from "@11ftc/shared";
 import { TicketService } from "./ticket.service.js";
 import { TicketRepository, type TicketRow } from "./ticket.repository.js";
 import { NumberingService } from "../numbering/numbering.service.js";
@@ -39,6 +45,25 @@ let mainIssueId: string;
 let actorUserId: string;
 
 async function cleanup(): Promise<void> {
+  const testEmployees = await db
+    .select({ id: schema.employees.employeeId })
+    .from(schema.employees)
+    .where(inArray(schema.employees.nameNormalized, TEST_EMPLOYEE_NORMALIZED));
+  if (testEmployees.length) {
+    const empIds = testEmployees.map((e) => e.id);
+    const testTickets = await db
+      .select({ id: schema.tickets.ticketId })
+      .from(schema.tickets)
+      .where(inArray(schema.tickets.employeeId, empIds));
+    if (testTickets.length) {
+      const ticketIds = testTickets.map((t) => t.id);
+      await db.delete(schema.ticketAssignees).where(inArray(schema.ticketAssignees.ticketId, ticketIds)); // allow-delete-scan-skip
+      await db.delete(schema.auditLog).where(inArray(schema.auditLog.ticketId, ticketIds)); // allow-delete-scan-skip
+      await db.delete(schema.syncOutbox).where(inArray(schema.syncOutbox.ticketId, ticketIds)); // allow-delete-scan-skip
+      await db.delete(schema.tickets).where(inArray(schema.tickets.ticketId, ticketIds)); // allow-delete-scan-skip
+    }
+  }
+
   await db
     .delete(schema.employees)
     .where(inArray(schema.employees.nameNormalized, TEST_EMPLOYEE_NORMALIZED));
@@ -48,7 +73,7 @@ async function cleanup(): Promise<void> {
   await db.delete(schema.departments).where(eq(schema.departments.name, TEST_DEPT));
   await db
     .delete(schema.mainIssueCategory)
-    .where(eq(schema.mainIssueCategory.label, TEST_ISSUE));
+    .where(inArray(schema.mainIssueCategory.label, [TEST_ISSUE, "M5 Second Issue"]));
   await db.delete(schema.users).where(eq(schema.users.email, TEST_USER_EMAIL));
 }
 
@@ -201,5 +226,63 @@ describe("M5 encode — one transaction (number + ticket + audit + outbox)", () 
       .where(eq(schema.syncOutbox.rowKey, ticketNo));
     expect(t.length).toBe(0);
     expect(o.length).toBe(0);
+  });
+
+  it("update with main issue and assignees logs both changes under UPDATE and persists assignees", async () => {
+    const [secondIssue] = await db
+      .insert(schema.mainIssueCategory)
+      .values({ label: "M5 Second Issue" })
+      .returning();
+    if (!secondIssue) throw new Error("failed to create second issue fixture");
+
+    try {
+      await catchRollback(
+        db.transaction(async (tx) => {
+          const row = await service.encodeTx(input("Closed"), actor(), tx);
+          
+          // Test updating assignees and mainIssue in transaction
+          const [oldCat] = await tx
+            .select({ label: schema.mainIssueCategory.label })
+            .from(schema.mainIssueCategory)
+            .where(eq(schema.mainIssueCategory.mainIssueId, row.mainIssueId));
+          const [newCat] = await tx
+            .select({ label: schema.mainIssueCategory.label })
+            .from(schema.mainIssueCategory)
+            .where(eq(schema.mainIssueCategory.mainIssueId, secondIssue.mainIssueId));
+
+          const assignees = await (service as any).technician.setAssignees(
+            row.ticketId,
+            ["Technician Alice", "Technician Bob"],
+            tx,
+          );
+
+          await (service as any).audit.log(
+            "UPDATE",
+            row.ticketId,
+            [
+              { fieldName: "main_issue", previousValue: oldCat?.label, newValue: newCat?.label },
+              { fieldName: "assignees", previousValue: null, newValue: formatAssignees(assignees) },
+            ],
+            actor(),
+            tx,
+          );
+
+          const audit = await tx
+            .select()
+            .from(schema.auditLog)
+            .where(eq(schema.auditLog.ticketId, row.ticketId));
+
+          const updateAudits = audit.filter((a) => a.action === "UPDATE");
+          expect(updateAudits.length).toBe(2);
+          expect(updateAudits.map((a) => a.fieldName)).toContain("main_issue");
+          expect(updateAudits.map((a) => a.fieldName)).toContain("assignees");
+          throw new RollbackSignal();
+        }),
+      );
+    } finally {
+      await db
+        .delete(schema.mainIssueCategory)
+        .where(eq(schema.mainIssueCategory.mainIssueId, secondIssue.mainIssueId));
+    }
   });
 });

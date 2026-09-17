@@ -14,10 +14,9 @@ import type { TicketAssigneeDto } from "./technician.dto.js";
  * An array because two-technician work is 21% of the real history ("Kim/Paul"). Order is
  * preserved — it becomes the sheet's column G verbatim.
  */
-const assigneeNamesSchema = z
+const assigneeNamesArray = z
   .array(z.string().trim().min(1).max(120))
   .max(5)
-  .default([])
   .transform((names) => {
     // Same person typed twice (or in two casings) is one assignee, not two join rows.
     const seen = new Set<string>();
@@ -28,6 +27,8 @@ const assigneeNamesSchema = z
       return true;
     });
   });
+
+const assigneeNamesSchema = assigneeNamesArray.default([]);
 
 const statusSchema = z.enum([
   TicketStatus.OPEN,
@@ -74,19 +75,20 @@ export const bulkEncodeTicketSchema = z.object({
 });
 export type BulkEncodeTicketDto = z.infer<typeof bulkEncodeTicketSchema>;
 
-/** Field corrections (FR-9). Status/assignment go through their dedicated endpoints. */
+/** Field corrections (FR-9). Status/assignment can also be updated here in one atomic transaction. */
 export const updateTicketSchema = z
   .object({
     concern: z.string().trim().min(1).optional(),
     remarks: z.string().trim().max(2000).nullish(),
     mainIssueId: z.string().uuid().optional(),
+    assignees: assigneeNamesArray.optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "nothing to update" });
 export type UpdateTicketDto = z.infer<typeof updateTicketSchema>;
 
 /** Re-assignment (FR-9). Sends the FULL list — an empty array means "unassigned". */
 export const assignTicketSchema = z.object({
-  assignees: assigneeNamesSchema,
+  assignees: assigneeNamesArray,
 });
 export type AssignTicketDto = z.infer<typeof assignTicketSchema>;
 

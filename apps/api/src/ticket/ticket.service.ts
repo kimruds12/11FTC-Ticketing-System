@@ -143,6 +143,7 @@ export class TicketService {
       "CREATE",
       row.ticketId,
       [
+        { fieldName: "status", previousValue: null, newValue: row.status },
         ...(assignees.length
           ? [field("assignees", null, formatAssignees(assignees))]
           : []),
@@ -166,13 +167,15 @@ export class TicketService {
       const patch: TicketPatch = { updatedAt: new Date() };
       const changes: FieldChange[] = [];
 
-      if (input.concern !== undefined && input.concern !== current.concern) {
-        patch.concern = input.concern;
-        changes.push(field("concern", current.concern, input.concern));
+      if (input.concern !== undefined && input.concern.trim() !== current.concern.trim()) {
+        patch.concern = input.concern.trim();
+        changes.push(field("concern", current.concern, input.concern.trim()));
       }
-      if (input.remarks !== undefined && (input.remarks ?? null) !== current.remarks) {
-        patch.remarks = input.remarks ?? null;
-        changes.push(field("remarks", current.remarks, input.remarks ?? null));
+      const newRemarks = input.remarks?.trim() || null;
+      const oldRemarks = current.remarks?.trim() || null;
+      if (input.remarks !== undefined && newRemarks !== oldRemarks) {
+        patch.remarks = newRemarks;
+        changes.push(field("remarks", current.remarks, newRemarks));
       }
       if (input.mainIssueId !== undefined && input.mainIssueId !== current.mainIssueId) {
         patch.mainIssueId = input.mainIssueId;
@@ -187,6 +190,14 @@ export class TicketService {
           .where(eq(schema.mainIssueCategory.mainIssueId, input.mainIssueId))
           .limit(1);
         changes.push(field("main_issue", oldCat?.label ?? current.mainIssueId, newCat?.label ?? input.mainIssueId));
+      }
+      if (input.assignees !== undefined) {
+        const beforeAssignees = formatAssignees(await this.technician.assigneesOf(ticketId, tx));
+        const assignees = await this.technician.setAssignees(ticketId, input.assignees, tx);
+        const afterAssignees = formatAssignees(assignees);
+        if (beforeAssignees !== afterAssignees) {
+          changes.push(field("assignees", beforeAssignees || "Unassigned", afterAssignees || "Unassigned"));
+        }
       }
       if (changes.length === 0) return; // no real change → no audit/outbox noise
 

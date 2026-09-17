@@ -27,9 +27,25 @@ export class AppError extends Error {
 }
 
 interface ApiErrorBody {
-  message?: string | string[];
+  message?: string | unknown[] | Record<string, unknown>;
   code?: string;
   details?: unknown;
+}
+
+function formatErrorMessageItem(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object") {
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.message === "string") {
+      return obj.path ? `${String(obj.path)}: ${obj.message}` : obj.message;
+    }
+    try {
+      return JSON.stringify(item);
+    } catch {
+      return String(item);
+    }
+  }
+  return String(item);
 }
 
 export function toAppError(error: AxiosError): AppError {
@@ -38,8 +54,15 @@ export function toAppError(error: AxiosError): AppError {
     return new AppError(error.message || "Network error", 0);
   }
   const body = (res.data ?? {}) as ApiErrorBody;
-  const message = Array.isArray(body.message)
-    ? body.message.join(", ")
-    : body.message || error.message || `Request failed (${res.status})`;
-  return new AppError(message, res.status, body.code, body.details);
+  let message: string;
+  if (Array.isArray(body.message)) {
+    message = body.message.map(formatErrorMessageItem).filter(Boolean).join(", ");
+  } else if (body.message && typeof body.message === "object") {
+    message = formatErrorMessageItem(body.message);
+  } else if (typeof body.message === "string") {
+    message = body.message;
+  } else {
+    message = error.message || `Request failed (${res.status})`;
+  }
+  return new AppError(message || `Request failed (${res.status})`, res.status, body.code, body.details);
 }

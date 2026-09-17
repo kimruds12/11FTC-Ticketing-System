@@ -39,6 +39,8 @@ const ACTION_STYLE: Record<string, string> = {
 
 /** `main_issue_id` → "Main issue". The column stores DB field names; people read English. */
 function humanField(field: string): string {
+  if (field === "assignees" || field === "handled_by") return "Handled by";
+  if (field === "main_issue" || field === "main_issue_id") return "Main issue";
   return field
     .replace(/_id$/, "")
     .replace(/_/g, " ")

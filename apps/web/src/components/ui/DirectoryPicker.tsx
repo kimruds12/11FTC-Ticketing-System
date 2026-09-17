@@ -45,6 +45,8 @@ interface DirectoryPickerProps {
   id?: string;
   /** Picking a known option can carry extra data back (e.g. an employee's department). */
   onPick?: (option: DirectoryOption) => void;
+  /** Callback fired whenever the user types or clears text in the input */
+  onPendingTextChange?: (text: string) => void;
 }
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -62,6 +64,7 @@ export default function DirectoryPicker({
   invalid = false,
   id,
   onPick,
+  onPendingTextChange,
 }: DirectoryPickerProps) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
@@ -159,6 +162,7 @@ export default function DirectoryPicker({
     onChange(multiple ? (value.length >= max ? value : [...value, clean]) : [clean]);
     if (option) onPick?.(option);
     setTerm("");
+    onPendingTextChange?.("");
     setHighlight(0);
     setOpen(multiple);
     if (multiple) inputRef.current?.focus();
@@ -242,11 +246,18 @@ export default function DirectoryPicker({
           aria-autocomplete="list"
           onChange={(e) => {
             setTerm(e.target.value);
+            onPendingTextChange?.(e.target.value);
             setOpen(true);
             setHighlight(0);
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onBlur={() => {
+            const typedText = term.trim();
+            if (allowCreate && typedText && !taken.has(norm(typedText))) {
+              add(typedText);
+            }
+            setTimeout(() => setOpen(false), 150);
+          }}
           onKeyDown={onKeyDown}
           placeholder={
             full

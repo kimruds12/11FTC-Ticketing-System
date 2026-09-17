@@ -1,20 +1,8 @@
-"use client";
-
+import { useState } from "react";
 import Link from "next/link";
 import { formatAssignees, type TicketDto } from "@11ftc/shared";
 import { formatSheetDate } from "@/lib/utils";
 import StatusBadge from "./StatusBadge";
-
-/**
- * TicketTable — the ticket queue (FR-3). Renders the M5 read model (`TicketDto`) directly;
- * no view-model fork.
- *
- * Columns: Ticket No, Date, Employee, Department, Main Issue, Status, Assigned To, Actions.
- * No priority column — SRS §11 defers SLA/priority.
- *
- * There is NO delete action. Nothing is ever deleted (FR-9/FR-35); corrections are edits and
- * the audit log carries them. Do not add one.
- */
 
 interface TicketTableProps {
   tickets: TicketDto[];
@@ -22,6 +10,7 @@ interface TicketTableProps {
   limit: number;
   offset: number;
   onPageChange: (nextOffset: number) => void;
+  onLimitChange: (nextLimit: number) => void;
   /** Open the encode modal from the empty state — encoding is not a route. */
   onEncode: () => void;
 }
@@ -40,12 +29,56 @@ export default function TicketTable({
   limit,
   offset,
   onPageChange,
+  onLimitChange,
   onEncode,
 }: TicketTableProps) {
-  const from = total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + tickets.length, total);
-  const hasPrev = offset > 0;
-  const hasNext = offset + limit < total;
+  const [goToPage, setGoToPage] = useState("");
+
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const hasPrev = currentPage > 1;
+  const hasNext = currentPage < totalPages;
+
+  function handlePageJump(p: number) {
+    if (p >= 1 && p <= totalPages) {
+      onPageChange((p - 1) * limit);
+    }
+  }
+
+  function handleGoToSubmit(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const p = parseInt(goToPage, 10);
+    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+      handlePageJump(p);
+      setGoToPage("");
+    }
+  }
+
+  const getPageNumbers = (): (number | string)[] => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 4) {
+        for (let i = 1; i <= 5; i++) pages.push(i);
+        pages.push("...");
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 3) {
+        pages.push(1);
+        pages.push("...");
+        for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        pages.push("...");
+        pages.push(currentPage - 1);
+        pages.push(currentPage);
+        pages.push(currentPage + 1);
+        pages.push("...");
+        pages.push(totalPages);
+      }
+    }
+    return pages;
+  };
 
   return (
     <div className="w-full overflow-hidden bg-white rounded-xl border border-gray-200 shadow-card">
@@ -246,33 +279,99 @@ export default function TicketTable({
         </table>
       </div>
 
-      {/* ── Pagination (server-side via limit/offset) ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-center px-5 py-3.5 border-t border-gray-100 text-xs font-semibold text-gray-400 gap-3">
-        <span>
-          Showing {from} to {to} of {total} tickets
+      {/* ── Pagination matching Picture 2 (total in total, < [1] 2 >, dropdown 10/page, Go to) ── */}
+      <div className="flex flex-wrap items-center justify-end gap-3 px-5 py-3.5 border-t border-gray-100 text-xs font-medium text-gray-500">
+        <span className="text-gray-500 mr-1 tabular-nums">
+          {total} in total
         </span>
+
+        {/* Previous page < */}
+        <button
+          onClick={() => handlePageJump(currentPage - 1)}
+          disabled={!hasPrev}
+          className="min-w-[28px] h-7 px-1.5 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+          aria-label="Previous page"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        {/* Numbered Page Buttons */}
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => onPageChange(Math.max(0, offset - limit))}
-            disabled={!hasPrev}
-            className="p-1.5 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-gray-500"
-            aria-label="Previous page"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <button
-            onClick={() => onPageChange(offset + limit)}
-            disabled={!hasNext}
-            className="p-1.5 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-gray-500"
-            aria-label="Next page"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+          {getPageNumbers().map((p, idx) =>
+            typeof p === "number" ? (
+              <button
+                key={idx}
+                onClick={() => handlePageJump(p)}
+                className={`min-w-[28px] h-7 px-2 flex items-center justify-center rounded text-xs transition-colors ${
+                  p === currentPage
+                    ? "border border-blue-500 text-blue-600 bg-white font-bold shadow-xs"
+                    : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300 font-medium"
+                }`}
+              >
+                {p}
+              </button>
+            ) : (
+              <span
+                key={idx}
+                className="min-w-[24px] h-7 flex items-center justify-center text-gray-400 text-xs select-none"
+              >
+                {p}
+              </span>
+            ),
+          )}
         </div>
+
+        {/* Next page > */}
+        <button
+          onClick={() => handlePageJump(currentPage + 1)}
+          disabled={!hasNext}
+          className="min-w-[28px] h-7 px-1.5 flex items-center justify-center rounded border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+          aria-label="Next page"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* Page size dropdown */}
+        <div className="relative inline-block ml-1">
+          <select
+            value={limit}
+            onChange={(e) => onLimitChange(Number(e.target.value))}
+            className="h-7 pl-2.5 pr-6 bg-white border border-gray-200 hover:border-gray-300 rounded text-xs text-gray-700 font-medium appearance-none cursor-pointer focus:outline-none focus:border-blue-500 shadow-xs"
+            aria-label="Items per page"
+          >
+            <option value={10}>10 / page</option>
+            <option value={20}>20 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
+          <svg
+            className="w-3.5 h-3.5 text-gray-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+
+        {/* Go to [input] */}
+        <form onSubmit={handleGoToSubmit} className="flex items-center gap-1.5 ml-1">
+          <span className="text-gray-500 text-xs font-medium">Go to</span>
+          <input
+            type="number"
+            min={1}
+            max={totalPages}
+            value={goToPage}
+            onChange={(e) => setGoToPage(e.target.value)}
+            onBlur={() => handleGoToSubmit()}
+            className="w-11 h-7 px-1.5 border border-gray-200 rounded text-center text-xs text-gray-800 focus:outline-none focus:border-blue-500 bg-white"
+            aria-label="Go to page"
+          />
+        </form>
       </div>
     </div>
   );
